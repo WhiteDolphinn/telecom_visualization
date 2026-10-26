@@ -1,0 +1,947 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ALOHA — интерактивная лаборатория</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f2f4f8;color:#202c49;font:14px/1.5 system-ui,-apple-system,sans-serif}
+#aloha-lab{max-width:1050px;margin:auto;padding:24px}
+h1{font-size:30px;letter-spacing:-1px;margin:0}h2{font-size:17px;margin:0}
+p{margin:7px 0 0}.muted,small{color:#63708a}small{font-size:12px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:2px;color:#3264db}
+.badge{background:#e6ecfa;color:#31548b;padding:7px 11px;border-radius:8px;font-size:12px}
+.panel{background:#fff;border:1px solid #e1e6ef;border-radius:14px;padding:18px;margin-top:14px}
+.controls{display:flex;flex-wrap:wrap;gap:14px 22px;align-items:end}
+.controls label{display:grid;gap:6px;font-size:12px;color:#63708a}
+.controls label.load{flex:1;min-width:220px}
+select,button{font:inherit}
+select{padding:8px;border-radius:7px;border:1px solid #d3dae6;background:#fff;color:#202c49}
+input[type=range]{width:100%;accent-color:#3264db}
+button{border:1px solid #d5dce9;border-radius:7px;padding:8px 12px;background:#fff;color:#202c49;cursor:pointer}
+button:hover:not(:disabled){background:#edf2fd}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #a8c0fc;outline-offset:2px}
+button:disabled{opacity:.45;cursor:default}
+button.primary{background:#3264db;border-color:#3264db;color:#fff}
+button.primary:hover{background:#244fae}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:16px}
+.toolbar small{margin-left:auto}
+.devices{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.device{display:grid;grid-template-columns:18px 1fr;gap:0 6px;align-items:center;padding:8px 10px;background:#f6f8fc;border-radius:8px;cursor:pointer}
+.device:has(input:not(:checked)){opacity:.55}
+.device input{accent-color:#3264db;width:16px;height:16px;margin:0}
+.device small{grid-column:2;font-variant-numeric:tabular-nums}
+.device span{font-size:12px}
+.heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:15px 0}
+.stat{border-radius:9px;padding:10px 14px;background:#f4f6fa}
+.stat strong{display:block;font-size:26px;font-variant-numeric:tabular-nums;font-weight:600}
+.stat.good{background:#eaf7f1}.stat.bad{background:#fff0f2}
+.air-detail{height:18px;font-size:12px;line-height:18px;white-space:nowrap}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:#63708a;align-items:center}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:3px}
+.green{background:#21876e}.red{background:#d34965}.blue{background:#3264db}.orange{background:#d08225}
+.line{width:20px;border-top:2px solid #3264db}
+.dashed{border-top:2px dashed #8b93a9}
+svg{display:block;width:100%;height:auto;overflow:visible}
+svg text{font:12px system-ui,sans-serif;fill:#52617b}
+.packet{cursor:pointer;outline:none}
+.packet>rect{stroke:none}
+.packet.good>rect{fill:#21876e}
+.packet.bad>rect{fill:#d34965}
+.packet.busy>rect{fill:#3264db}
+.packet>text{fill:#fff;font-size:11px;pointer-events:none}
+.packet:focus>rect{stroke:#202c49;stroke-width:3}
+.packet.selected>rect{stroke:#e8a33b;stroke-width:3}
+#packet-detail{min-height:38px;margin-top:4px;padding:9px 12px;background:#f6f8fc;border-radius:8px;font-size:12px}
+#rates{font-variant-numeric:tabular-nums;font-size:13px}
+.graph-legend{margin:12px 0 2px}
+details{margin-top:14px;color:#52617b;font-size:12px}
+summary{cursor:pointer;color:#202c49}
+details p{max-width:85ch}
+#checks{margin-top:12px;font-size:12px}
+.pass{color:#227159}.fail{color:#ac2444}
+.note{font-size:12px;color:#63708a;margin-top:12px}
+.air-state{padding:6px 10px;border-radius:8px;background:#eef2f9;color:#52617b;font-size:12px;font-variant-numeric:tabular-nums}
+.air-state[data-state="bad"]{background:#fff0f2;color:#ad2848}
+.air-state[data-state="busy"]{background:#eaf0ff;color:#3264db}
+#network [data-device]{cursor:pointer;outline:none}
+#network [data-device]:focus .node-disc{stroke:#3264db;stroke-width:3}
+#network [data-packet]{cursor:pointer}
+.collision-row{display:grid;grid-template-columns:100px 130px 1fr;gap:10px;width:100%;text-align:left;margin-top:6px;font-size:12px;background:#fff8f9;border-color:transparent}
+.collision-row[aria-pressed="true"]{outline:2px solid #e8a33b;background:#fff7e7}
+#example-note{padding:9px 12px;background:#f4f7ff;border-radius:8px;font-size:12px}
+@media(max-width:600px){
+ #aloha-lab{padding:12px}.panel{padding:12px}.devices{grid-template-columns:repeat(2,1fr)}
+ h1{font-size:25px}.top{align-items:start;flex-direction:column}.badge{max-width:none}
+ .toolbar small{width:100%;margin-left:0}.stat{padding:8px}.stat strong{font-size:23px}
+ .controls label{flex:1}.heading button{width:100%}
+ .stats{gap:6px}.stat{display:grid;grid-template-rows:minmax(36px,auto) auto 1fr}
+ .air-detail{height:36px}
+}
+@media(max-width:520px){
+ .collision-row{grid-template-columns:85px 1fr}
+ .collision-row span:last-child{grid-column:1/-1}
+}
+</style>
+</head>
+<body>
+<main id="aloha-lab">
+<header class="top">
+ <div>
+  <div class="eyebrow">ЛАБОРАТОРИЯ СЛУЧАЙНОГО ДОСТУПА</div>
+  <h1>ALOHA в действии</h1>
+  <p class="muted">Включайте устройства, наблюдайте передачи и разбирайте коллизии.</p>
+ </div>
+ <div class="badge" id="phase">Передача в любой момент</div>
+</header>
+
+<section class="panel">
+ <div class="controls">
+  <label>Режим
+   <select id="mode">
+    <option value="pure">Обычная ALOHA</option>
+    <option value="slotted">Слотовая ALOHA</option>
+   </select>
+  </label>
+  <label class="load">Нагрузка q, попыток / T на устройство
+   <strong id="load-value"></strong>
+   <input aria-label="Нагрузка на устройство" id="load" type="range" min="0" max="0.7" step="0.01" value="0.12">
+  </label>
+  <label>Скорость
+   <select id="speed">
+    <option value="0.1">0,1×</option>
+    <option value="0.25">0,25×</option>
+    <option value="0.5">0,5×</option>
+    <option value="1" selected>1×</option>
+    <option value="2">2×</option>
+    <option value="4">4×</option>
+    <option value="8">8×</option>
+    <option value="16">16×</option>
+    <option value="32">32×</option>
+    <option value="64">64×</option>
+   </select>
+  </label>
+ </div>
+ <div class="toolbar">
+  <button class="primary" id="run">Ⅱ Пауза</button>
+  <button id="step-small">Шаг +0,1 T</button>
+  <button id="step">Шаг +1 T</button>
+  <button id="fast">+1 000 T</button>
+  <button id="reset">Новый опыт</button>
+  <button id="random">Случайный поток</button>
+  <small id="clock"></small>
+ </div>
+ <div class="devices" id="devices" aria-label="Включение устройств"></div>
+ <p class="note">Изменение режима, устройств или нагрузки начинает новый опыт. При 1× одна секунда соответствует T — длительности пакета.</p>
+</section>
+
+<section class="panel">
+ <div class="heading">
+  <h2>Устройства и полёт пакетов</h2>
+  <span id="air-state" class="air-state">Канал свободен</span>
+ </div>
+ <svg id="network" role="group" aria-label="Устройства и общий приёмник. Нажмите на устройство для переключения."></svg>
+ <p class="note">Нажмите на устройство, чтобы включить или выключить его. Это начнёт новый опыт.</p>
+ <p class="note">Полёт показывает ход передачи за T, а не задержку распространения. На больших скоростях отдельные передачи могут проходить между кадрами; статистика учитывает их все.</p>
+</section>
+
+<section class="panel">
+ <div class="heading">
+  <h2 id="timeline-title">Пакеты в общем канале</h2>
+  <small id="attempts"></small>
+ </div>
+ <div class="stats">
+  <div class="stat good"><small>Успешно, пакетов</small><strong id="good">0</strong></div>
+  <div class="stat bad"><small>Потеряно, завершено</small><strong id="bad">0</strong></div>
+  <div class="stat"><small>В эфире, пакетов</small><strong id="air">0</strong><div class="air-detail"><small id="air-damaged" title="Повреждённые пакеты, ещё находящиеся в эфире" hidden></small></div></div>
+ </div>
+ <div class="heading">
+  <div class="legend">
+   <span><i class="dot green"></i>Успех ✓</span>
+   <span><i class="dot red"></i>Коллизия ×</span>
+   <span><i class="dot blue"></i>В эфире …</span>
+  </div>
+  <small>Штриховка — интервал наложения</small>
+ </div>
+ <p class="note">Красный пакет уже повреждён, но занимает эфир до конца своей передачи. Счётчик потерь увеличивается после её завершения. В этой модели потерянные пакеты автоматически не повторяются.</p>
+ <svg id="timeline" role="group" aria-label="Временная диаграмма пакетов по устройствам"></svg>
+ <div id="packet-detail" aria-live="polite"></div>
+ <button id="unselect" disabled style="margin-top:8px">Вернуться к текущему времени</button>
+ <div class="toolbar">
+  <button id="single">Пример: один пакет</button>
+  <button id="collision">Пример: коллизия</button>
+  <small>Пример останавливается после приёма или потери.</small>
+ </div>
+ <div class="toolbar"><button id="compare-pure">Один сценарий: обычная</button><button id="compare-slotted">Тот же сценарий: слотовая</button></div>
+ <p id="example-note" hidden></p>
+ <p id="rates"></p>
+ <details open>
+  <summary>Последние потери пакетов</summary>
+  <div id="collision-log" aria-label="Журнал потерянных пакетов"></div>
+ </details>
+</section>
+
+<section class="panel">
+ <div class="heading">
+  <h2>Пропускная способность S(λ)</h2>
+  <button id="sweep" class="primary">Построить по симуляции</button>
+ </div>
+ <div class="legend graph-legend">
+  <span><i class="line"></i>Теория для N устройств</span>
+  <span><i class="line dashed"></i>Предел N → ∞</span>
+  <span><i class="dot orange"></i>Серия опытов</span>
+  <span><i class="dot green"></i>Текущий опыт</span>
+ </div>
+ <svg id="graph" role="img" aria-label="Зависимость успешных передач от суммарной интенсивности попыток"></svg>
+ <p class="note" id="graph-note"></p>
+ <p class="note">Для большого числа слабонагруженных устройств максимумы: обычная ALOHA — 1/(2e) ≈ 18,4% при λ = 0,5; слотовая — 1/e ≈ 36,8% при λ = 1. Это доля полезного времени канала, а не доля успешных пакетов. При конечном N синяя кривая отличается от этих пределов.</p>
+ <details>
+  <summary>Модель и обозначения</summary>
+  <p>λ = Nq — суммарная заданная интенсивность попыток, S — число успешно принятых пакетов за T. Все пакеты одинаковой длительности. Любое положительное перекрытие передач повреждает оба пакета. Ошибки канала, захват сигнала и автоматические повторные передачи не моделируются.</p>
+  <p>В обычной ALOHA устройство после передачи независимо ждёт экспоненциальное время со средним (1−q)/q · T. Его средняя частота попыток равна q/T. Одно устройство не передаёт два пакета одновременно. В слотовой ALOHA устройство передаёт с вероятностью q в каждом слоте.</p>
+  <p>Для конечного N: обычная S = λ[(1−q)exp(−q/(1−q))]<sup>N−1</sup>; слотовая S = λ(1−q)<sup>N−1</sup>. Предел при большом числе слабонагруженных устройств: λ exp(−2λ) и λ exp(−λ).</p>
+  <p>Каждая оранжевая точка — отдельный опыт: 100 T прогрева, затем 8 000 T измерения с ожиданием исхода всех пакетов, начатых в измерительном окне. Зелёная точка появляется после 20 T текущего случайного опыта. Ручные примеры на график не добавляются. В скрытой вкладке модельное время приостанавливается.</p>
+ </details>
+ <details>
+  <summary>Самопроверка</summary>
+  <p>Пересечения, границы, баланс пакетов, теория, независимость от частоты кадров и непрерывность координат шкалы.</p>
+  <button id="check">Запустить 19 проверок</button>
+  <div id="checks" hidden aria-live="polite"></div>
+ </details>
+</section>
+</main>
+
+<script>
+function rng(seed){
+ let a=seed>>>0;
+ return ()=>{
+  a=(a+0x6D2B79F5)>>>0;
+  let t=a;
+  t=Math.imul(t^t>>>15,t|1);
+  t^=t+Math.imul(t^t>>>7,t|61);
+  return ((t^t>>>14)>>>0)/4294967296;
+ };
+}
+class Engine{
+ constructor(mode,ids,q,seed=17,window=null){
+  this.mode=mode;this.ids=ids.slice();this.q=q;this.random=rng(seed);
+  this.t=0;this.slot=0;this.serial=0;this.active=[];this.history=[];
+  this.good=0;this.bad=0;this.sent=0;this.window=window;
+  this.per=Array.from({length:8},()=>({good:0,bad:0,sent:0}));
+  this.next=this.ids.map(()=>this.wait());
+ }
+ wait(){
+  return this.q<=0?Infinity:
+   -Math.log(Math.max(1e-12,1-this.random()))*(1-this.q)/this.q;
+ }
+ measured(t){
+  return !this.window||(t>=this.window[0]&&t<this.window[1]);
+ }
+ finish(t){
+  const keep=[];
+  for(const p of this.active){
+   if(p.end<=t){
+    p.done=true;
+    if(this.measured(p.start)){
+     if(p.hits.length){this.bad++;this.per[p.dev].bad++;}
+     else{this.good++;this.per[p.dev].good++;}
+    }
+   }else keep.push(p);
+  }
+  this.active=keep;
+ }
+ start(dev,t){
+  const p={id:++this.serial,dev,start:t,end:t+1,hits:[],done:false};
+  for(const a of this.active){
+   if(a.end>t){
+    const hit={a:t,b:Math.min(a.end,p.end)};
+    p.hits.push({...hit,other:a.id});
+    a.hits.push({...hit,other:p.id});
+   }
+  }
+  this.active.push(p);this.history.push(p);
+  if(this.history.length>600)this.history=this.history.slice(-400);
+  if(this.measured(t)){this.sent++;this.per[dev].sent++;}
+  return p;
+ }
+ advance(to){
+  if(to<this.t)throw Error("Time reversal");
+  if(this.mode==="pure"){
+   while(this.next.length){
+    const at=Math.min(...this.next);
+    if(at>to||!Number.isFinite(at))break;
+    this.finish(at);
+    const i=this.next.indexOf(at);
+    this.start(this.ids[i],at);
+    this.next[i]=at+1+this.wait();
+   }
+  }else{
+   while(this.slot<=to){
+    const at=this.slot++;this.finish(at);
+    for(const id of this.ids)if(this.random()<this.q)this.start(id,at);
+   }
+  }
+  this.finish(to);this.t=to;
+ }
+}
+function finiteS(mode,n,g){
+ if(!n||g<=0)return 0;
+ if(g>n)return NaN;
+ if(g===n)return n===1?1:0;
+ const q=g/n;
+ return mode==="pure"
+  ?g*Math.pow((1-q)*Math.exp(-q/(1-q)),n-1)
+  :g*Math.pow(1-q,n-1);
+}
+function sample(mode,n,g,seed=31,H=8000){
+ if(!n||!g)return {g:0,s:0,sent:0,bad:0};
+ const e=new Engine(mode,Array.from({length:n},(_,i)=>i),g/n,seed,[100,100+H]);
+ e.advance(101+H);
+ return {g:e.sent/H,s:e.good/H,sent:e.sent,bad:e.bad};
+}
+function timeView(w,t,pinned=null){
+ const span=w<520?6:12,L=42,R=12;
+ const end=Math.max(span,pinned?pinned.end+.5:t+1.5);
+ const start=end-span,origin=Math.floor(start/64)*64;
+ return {w,L,R,span,start,end,origin,scale:(w-L-R)/span,head:pinned?pinned.start:t};
+}
+function geometry(w){
+ return {
+  w,h:350,cx:w/2,cy:169,
+  points:Array.from({length:8},(_,i)=>({x:i<4?64:w-64,y:48+(i%4)*78}))
+ };
+}
+function packetPoint(p,g,t){
+ const a=g.points[p.dev],dx=g.cx-a.x,dy=g.cy-a.y,len=Math.hypot(dx,dy);
+ const f=Math.max(0,Math.min(1,t-p.start)),d=30+(len-70)*f;
+ return {x:a.x+dx/len*d,y:a.y+dy/len*d};
+}
+
+(()=>{
+const root=document.getElementById("aloha-lab");
+const $=id=>root.querySelector("#"+id);
+const fmt=(v,d=2)=>Number(v).toFixed(d).replace(".",",");
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({
+ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+}[c]));
+const sv=(tag,attrs={},text=null)=>{
+ const n=document.createElementNS("http://www.w3.org/2000/svg",tag);
+ for(const [k,v]of Object.entries(attrs))n.setAttribute(k,String(v));
+ if(text!==null)n.textContent=text;
+ return n;
+};
+
+let enabled=Array.from({length:8},(_,i)=>i<6),mode="pure",q=.12,speed=1,seed=17;
+let engine,running=true,manual=false,events=[],manualEnd=0,ended=false,demoKind=false;
+let pinned=null,context=[],sweep=[],sweepToken=0,sweepBusy=false,logSignature=null;
+let previous=null,anchorWall=0,anchorSim=0,lastStats=-Infinity,lastGraph=-Infinity;
+const ids=()=>enabled.flatMap((on,i)=>on?[i]:[]);
+
+function anchor(now){
+ previous=now;anchorWall=now;anchorSim=engine.t;
+}
+function clearSelection(){pinned=null;context=[];}
+function reset(clearSweep=false){
+ engine=new Engine(mode,ids(),q,seed);
+ anchor(performance.now());
+ manual=false;events=[];ended=false;clearSelection();logSignature=null;
+ if(clearSweep){
+  sweep=[];sweepToken++;sweepBusy=false;
+  $("sweep").textContent="Построить по симуляции";
+ }
+ drawAll();
+}
+function toggleDevice(i){
+ enabled[i]=!enabled[i];
+ $("devices").querySelectorAll("input")[i].checked=enabled[i];
+ reset(true);
+}
+function controls(){
+ $("devices").innerHTML=enabled.map((on,i)=>
+  '<label class="device"><input type="checkbox" '+(on?"checked":"")+
+  '><span>Устройство '+(i+1)+'</span><small id="devstat'+i+
+  '">0 ✓ / 0 ×</small></label>'
+ ).join("");
+ $("devices").querySelectorAll("input").forEach((e,i)=>{
+  e.onchange=()=>{enabled[i]=e.checked;reset(true);};
+ });
+}
+function advanceTo(to){
+ const goal=manual?Math.min(to,manualEnd):to;
+ if(manual){
+  while(events.length&&events[0].at<=goal){
+   const ev=events.shift();
+   engine.advance(ev.at);engine.start(ev.dev,ev.at);
+  }
+ }
+ engine.advance(goal);
+ if(manual&&!events.length&&!engine.active.length){
+  ended=true;running=false;
+ }
+}
+function clock(now,flushVisible=false){
+ const current=previous===null?now:Math.max(now,previous);
+ if(previous===null){anchor(current);return;}
+ if(running&&(!document.hidden||flushVisible)){
+  advanceTo(anchorSim+(current-anchorWall)*speed/1000);
+ }else anchor(current);
+ previous=current;
+}
+function demo(collision){
+ const list=ids();
+ if(list.length<(collision?2:1))return;
+ engine=new Engine(mode,list,0,seed);
+ manual=true;ended=false;demoKind=collision;clearSelection();logSignature=null;
+ events=[{at:0,dev:list[0]}];
+ if(collision)events.push({at:collision==='alignment'?(mode==='pure'?.55:1):mode==="pure"?.55:0,dev:list[1]});
+ manualEnd=Math.max(...events.map(e=>e.at+1));
+ advanceTo(0);running=true;anchor(performance.now());drawAll();
+}
+function pickPacket(id){
+ const p=engine.history.find(p=>p.id===id);
+ if(!p)return;
+ running=false;anchor(performance.now());pinned=p;
+ const partners=new Set(p.hits.map(h=>h.other));
+ context=engine.history.filter(a=>a===p||partners.has(a.id));
+ drawAll();
+}
+function inspect(){
+ $("timeline-title").textContent=pinned
+  ?"Разбор пакета #"+pinned.id:"Пакеты в общем канале";
+ $("unselect").disabled=!pinned;
+ $("packet-detail").textContent=pinned
+  ?"Пакет #"+pinned.id+" · У"+(pinned.dev+1)+" · "+
+   fmt(pinned.start)+"–"+fmt(pinned.end)+" T · "+
+   (pinned.hits.length
+    ?"Перекрытия: "+pinned.hits.map(h=>
+     "#"+h.other+": "+fmt(h.a,3)+"–"+fmt(h.b,3)+
+     " T, Δt="+((h.b-h.a)<.001
+      ?(h.b-h.a).toExponential(2).replace(".",",")
+      :fmt(h.b-h.a,3))+" T"
+    ).join("; ")
+    :pinned.done?"Успешно принят.":"Передаётся.")
+  :"Нажмите на пакет или запись в журнале, чтобы остановить опыт и разобрать результат.";
+}
+function stats(){
+ const finished=engine.good+engine.bad,n=ids().length;
+ $("run").textContent=running?"Ⅱ Пауза":ended?"↻ Повторить":"▶ Старт";
+ $("clock").textContent=(manual?"Ручной пример":"Случайный поток")+
+  " · t = "+fmt(engine.t)+" T"+(manual?'':' · seed '+seed);
+ $("good").textContent=engine.good;
+ $("bad").textContent=engine.bad;
+ $("air").textContent=engine.active.length;
+ const damaged=engine.active.filter(p=>p.hits.length).length;
+ $("air-damaged").hidden=!damaged;$("air-damaged").textContent="Из них ×: "+damaged;
+ $("attempts").textContent="Начато "+engine.sent+" · завершено "+finished;
+ $("rates").textContent=manual?"Ручной пример: моменты старта заданы заранее. Оценки S и λ случайного потока здесь не рассчитываются.":"S = "+
+  (engine.t?fmt(engine.good/engine.t,3):"—")+
+  " пакетов/T · λ изм. = "+
+  (engine.t?fmt(engine.sent/engine.t,3):"—")+
+  " · успех = "+(finished?fmt(100*engine.good/finished,1)+"%":"—");
+ $("load-value").textContent=fmt(q)+" на устройство · λ = "+fmt(n*q)+(manual?" (для случайного потока)":"");
+ $("phase").textContent=mode==="pure"
+  ?"Передача в любой момент":"Передача на границе слота";
+ $("single").disabled=n<1;
+ $("collision").disabled=n<2;
+ $("compare-pure").disabled=n<2;$("compare-slotted").disabled=n<2;
+ $("example-note").hidden=!manual;
+ $("example-note").textContent=demoKind==='alignment'
+  ?"Одинаковые моменты готовности: первый пакет в 0T, второй в 0,55T. "+(mode==='pure'?"Обычная ALOHA начинает сразу: интервалы [0; 1) и [0,55; 1,55) пересекаются; оба пакета потеряны.":"Слотовая ALOHA откладывает второй старт до 1T: интервалы [0; 1) и [1; 2) не пересекаются; оба пакета приняты. Второй пакет ждёт 0,45T. Это один пример, не гарантия отсутствия коллизий.")
+  :demoKind?"Два устройства передают с перекрытием. В слотовой ALOHA передачи в одном слоте тоже сталкиваются; повреждённые пакеты продолжают занимать канал до конца T.":"Одно устройство передаёт один пакет за T. Других передач нет, поэтому коллизии нет.";
+ $("sweep").disabled=!n||sweepBusy;
+ for(let i=0;i<8;i++){
+  $("devstat"+i).textContent=engine.per[i].good+" ✓ / "+engine.per[i].bad+" ×";
+ }
+ inspect();
+}
+function journal(){
+ const rows=engine.history.filter(p=>p.done&&p.hits.length).slice(-6).reverse();
+ const sig=rows.map(p=>p.id).join(",");
+ if(sig!==logSignature){
+  logSignature=sig;
+  $("collision-log").innerHTML=rows.length?rows.map(p=>
+   '<button data-packet="'+p.id+'" class="collision-row"><strong>#'+p.id+
+   " · У"+(p.dev+1)+'</strong><span>'+fmt(p.start)+"–"+fmt(p.end)+
+   ' T</span><span>× '+[...new Set(p.hits.map(h=>"#"+h.other))].join(", ")+
+   '</span></button>'
+  ).join(""):'<p class="note">Здесь появятся потерянные пакеты. Нажмите на запись для разбора.</p>';
+ }
+ $("collision-log").querySelectorAll("button").forEach(b=>{
+  b.setAttribute("aria-pressed",String(!!pinned&&pinned.id===Number(b.dataset.packet)));
+ });
+}
+
+/* Постоянные SVG-элементы шкалы: каждый кадр меняются координаты,
+   а новые элементы создаются только при появлении пакетов и делений. */
+const TL={w:900,marks:new Map(),ticks:new Map(),layout:""};
+
+function initTimeline(){
+ const s=$("timeline");
+ s.setAttribute("viewBox","0 0 900 344");
+ const defs=sv("defs"),clip=sv("clipPath",{id:"timeline-clip"});
+ TL.clip=sv("rect",{x:42,y:18,width:846,height:311});
+ clip.appendChild(TL.clip);defs.appendChild(clip);
+ const pattern=sv("pattern",{
+  id:"hit-pattern",width:6,height:6,patternUnits:"userSpaceOnUse",
+  patternTransform:"rotate(45)"
+ });
+ pattern.appendChild(sv("rect",{width:2,height:6,fill:"#a52243",opacity:.5}));
+ defs.appendChild(pattern);s.appendChild(defs);
+
+ const viewport=sv("g",{"clip-path":"url(#timeline-clip)"});
+ TL.future=sv("rect",{y:18,height:278,fill:"#edf1f8"});
+ viewport.appendChild(TL.future);
+ TL.tickLayer=sv("g");TL.packetLayer=sv("g");
+ viewport.appendChild(TL.tickLayer);viewport.appendChild(TL.packetLayer);
+ s.appendChild(viewport);
+
+ for(let i=0;i<8;i++){
+  s.appendChild(sv("text",{x:6,y:44+i*33},"У"+(i+1)));
+  s.appendChild(sv("path",{
+   d:"M42 "+(53+i*33)+"H888",stroke:"#e2e7f0","data-lane":i
+  }));
+ }
+ TL.cursor=sv("path",{stroke:"#202c49","stroke-width":2});
+ s.appendChild(TL.cursor);
+ TL.clock=sv("text",{x:46,y:12});s.appendChild(TL.clock);
+ TL.axis=sv("text",{x:400,y:340},"Время, t / T");s.appendChild(TL.axis);
+}
+function paintTimeline(){
+ const v=timeView(TL.w,engine.t,pinned);
+ const layout=v.scale+":"+v.origin,rel=t=>(t-v.origin)*v.scale;
+ const changed=layout!==TL.layout;TL.layout=layout;
+ const shift=v.L-(v.start-v.origin)*v.scale;
+ TL.tickLayer.setAttribute("transform","translate("+shift+",0)");
+ TL.packetLayer.setAttribute("transform","translate("+shift+",0)");
+
+ const hx=v.L+(v.head-v.start)*v.scale;
+ TL.future.setAttribute("x",hx);
+ TL.future.setAttribute("width",Math.max(0,v.w-v.R-hx));
+ TL.cursor.setAttribute("d","M"+hx+" 18V296");
+ TL.clock.textContent=(pinned?"Разбор #"+pinned.id+" · ":"t = ")+fmt(v.head)+" T";
+
+ const step=v.w<520?2:1,wantedTicks=new Set();
+ for(let t=Math.ceil(v.start/step)*step-step;t<=v.end+step;t+=step){
+  wantedTicks.add(t);
+  let mark=TL.ticks.get(t);
+  if(!mark){
+   mark=sv("g");
+   mark.appendChild(sv("path",{d:"M0 18V296",stroke:"#dfe5ee"}));
+   mark.appendChild(sv("text",{x:-4,y:318},fmt(t,0)));
+   TL.tickLayer.appendChild(mark);TL.ticks.set(t,mark);
+  }
+  if(mark.tickLayout!==layout+":"+mode){
+   mark.setAttribute("transform","translate("+rel(t)+",0)");
+   mark.firstChild.setAttribute("stroke-dasharray",mode==="pure"?"2 4":"");
+   mark.tickLayout=layout+":"+mode;
+  }
+  const screenX=shift+rel(t),half=Math.max(10,fmt(t,0).length*3.5+2);
+  mark.lastChild.setAttribute('text-anchor','middle');
+  mark.lastChild.setAttribute('x',Math.max(v.L+half,Math.min(v.w-v.R-half,screenX))-screenX);
+  mark.lastChild.setAttribute('visibility',t>=v.start&&t<=v.end?'visible':'hidden');
+ }
+ for(const [t,node]of TL.ticks){
+  if(!wantedTicks.has(t)){node.remove();TL.ticks.delete(t);}
+ }
+
+ const packets=pinned?context:engine.history,wanted=new Set();
+ for(const p of packets){
+  if(p.end<v.start-1||p.start>v.end+1)continue;
+  wanted.add(p.id);
+  let mark=TL.marks.get(p.id);
+  if(!mark){
+   const g=sv("g",{role:"button",tabindex:0,"data-packet":p.id});
+   const body=sv("rect",{height:23,rx:4});
+   const hits=sv("g",{"pointer-events":"none"});
+   const label=sv("text",{x:5,y:16}),title=sv("title");
+   g.appendChild(title);g.appendChild(body);g.appendChild(hits);g.appendChild(label);
+   TL.packetLayer.appendChild(g);
+   mark={g,body,hits,label,title,signature:""};
+   TL.marks.set(p.id,mark);
+  }
+  if(mark.packet!==p){mark.packet=p;mark.x=NaN;mark.signature="";}
+  if(changed||mark.x!==p.start){
+   mark.g.setAttribute("transform",
+    "translate("+rel(p.start)+","+(30+p.dev*33)+")");
+   mark.body.setAttribute("width",v.scale);mark.x=p.start;
+  }
+  const signature=Number(p.done)+":"+p.hits.length+":"+
+   (pinned&&pinned.id===p.id)+":"+v.scale;
+  if(mark.signature!==signature){
+   mark.signature=signature;
+   const state=p.hits.length?"bad":p.done?"good":"busy";
+   mark.g.setAttribute("class",
+    "packet "+state+(pinned&&pinned.id===p.id?" selected":""));
+   const fullLabel="#"+p.id+(p.hits.length?" ×":p.done?" ✓":" …"),shortLabel="#"+p.id;
+   mark.label.textContent=fullLabel.length*6.6+8<=v.scale?fullLabel:shortLabel.length*6.6+8<=v.scale?shortLabel:"…";
+   const label="#"+p.id+" · У"+(p.dev+1)+" · "+
+    fmt(p.start)+"–"+fmt(p.end)+" T · "+
+    (p.hits.length?"коллизия":p.done?"успех":"передаётся");
+   mark.title.textContent=label;mark.g.setAttribute("aria-label",label);
+   mark.hits.replaceChildren(...p.hits.map(h=>sv("rect",{
+    x:(h.a-p.start)*v.scale,y:0,width:(h.b-h.a)*v.scale,
+    height:23,fill:"url(#hit-pattern)"
+   })));
+  }
+ }
+ for(const [id,mark]of TL.marks){
+  if(!wanted.has(id)){mark.g.remove();TL.marks.delete(id);}
+ }
+}
+function resizeTimeline(){
+ TL.w=Math.max(240,$("timeline").clientWidth);
+ $("timeline").setAttribute("viewBox","0 0 "+TL.w+" 344");
+ TL.clip.setAttribute("width",TL.w-54);
+ TL.axis.setAttribute("x",Math.max(45,TL.w/2-42));
+ $("timeline").querySelectorAll("[data-lane]").forEach((node,i)=>{
+  node.setAttribute("d","M42 "+(53+i*33)+"H"+(TL.w-12));
+ });
+ paintTimeline();
+}
+
+const NET={nodes:[],routes:[],g:null,flightsMap:new Map()};
+function icon(i){
+ const k=i%4;
+ if(k===0)return '<rect x="-12" y="-19" width="24" height="38" rx="5" fill="#f6f9ff" stroke="currentColor" stroke-width="2"/><rect x="-8" y="-12" width="16" height="23" rx="2" fill="#dce8ff"/><path d="M-4 -15H4M-3 15H3" stroke="currentColor" stroke-width="2"/>';
+ if(k===1)return '<rect x="-20" y="-15" width="40" height="27" rx="3" fill="#f6f9ff" stroke="currentColor" stroke-width="2"/><rect x="-15" y="-10" width="30" height="17" fill="#dce8ff"/><path d="M-24 14H24L19 19H-19Z" fill="#e0e7f2" stroke="currentColor" stroke-width="2"/>';
+ if(k===2)return '<rect x="-18" y="-12" width="36" height="27" rx="7" fill="#f6f9ff" stroke="currentColor" stroke-width="2"/><path d="M-13 -12L-8 -21H8L13 -12M-11 -8H11M-11 8H-6M6 8H11" fill="#dce8ff" stroke="currentColor" stroke-width="2"/><rect x="-16" y="13" width="7" height="5" rx="2" fill="currentColor"/><rect x="9" y="13" width="7" height="5" rx="2" fill="currentColor"/>';
+ return '<rect x="-17" y="-9" width="34" height="26" rx="5" fill="#f6f9ff" stroke="currentColor" stroke-width="2"/><circle cx="-8" cy="5" r="2" fill="#3264db"/><path d="M-10 -13Q0 -23 10 -13M-6 -9Q0 -15 6 -9M0 -2V8" fill="none" stroke="currentColor" stroke-width="2"/>';
+}
+function initNetwork(){
+ const s=$("network");
+ for(let i=0;i<8;i++){
+  const p=sv("path",{fill:"none",stroke:"#dfe5f0","stroke-width":2});
+  NET.routes.push(p);s.appendChild(p);
+ }
+ NET.halo=sv("circle",{r:56,fill:"#edf2fc"});
+ NET.ring=sv("circle",{r:38,fill:"#fff",stroke:"#b9c9e9","stroke-width":2});
+ s.appendChild(NET.halo);s.appendChild(NET.ring);
+ NET.receiver=sv("g");
+ NET.receiver.innerHTML='<path d="M0 -19L-14 16H14ZM0 -19V16M-9 5H9M-6 -3H6" fill="#e8effd" stroke="#52688f" stroke-width="2"/><circle cy="-19" r="3" fill="#3264db"/><path d="M-12 -27Q-22 -19 -12 -11M12 -27Q22 -19 12 -11" fill="none" stroke="#8299bd" stroke-width="2"/>';
+ s.appendChild(NET.receiver);
+ NET.caption=sv("text",{},"Приёмник");s.appendChild(NET.caption);
+
+ for(let i=0;i<8;i++){
+  const node=sv("g",{role:"button",tabindex:0,"data-device":i});
+  const disc=sv("circle",{r:29,fill:"#edf2fc",class:"node-disc"});
+  const pic=sv("g"),led=sv("circle",{cx:24,cy:-20,r:4,fill:"#21876e"});
+  pic.innerHTML=icon(i);
+  node.appendChild(disc);node.appendChild(pic);node.appendChild(led);
+  node.appendChild(sv("text",{x:-10,y:46},"У"+(i+1)));
+  s.appendChild(node);NET.nodes.push({node,disc,pic,led});
+ }
+ NET.flights=sv("g");s.appendChild(NET.flights);
+ NET.outcome=sv("circle",{
+  "pointer-events":"none",fill:"none","stroke-width":3,opacity:0
+ });
+ s.appendChild(NET.outcome);
+}
+function resizeNetwork(){
+ const g=geometry(Math.max(240,$("network").clientWidth));NET.g=g;
+ $("network").setAttribute("viewBox","0 0 "+g.w+" "+g.h);
+ for(let i=0;i<8;i++){
+  const a=g.points[i];
+  NET.nodes[i].node.setAttribute("transform","translate("+a.x+","+a.y+")");
+  NET.routes[i].setAttribute("d","M"+a.x+" "+a.y+"L"+g.cx+" "+g.cy);
+ }
+ for(const c of [NET.halo,NET.ring]){
+  c.setAttribute("cx",g.cx);c.setAttribute("cy",g.cy);
+ }
+ NET.receiver.setAttribute("transform","translate("+g.cx+","+g.cy+")");
+ NET.caption.setAttribute("x",g.cx-31);NET.caption.setAttribute("y",g.cy+68);
+ paintNetwork();
+}
+function paintNetwork(){
+ const g=NET.g;if(!g)return;
+ const active=engine.active;
+ for(let i=0;i<8;i++){
+  const p=active.find(p=>p.dev===i),n=NET.nodes[i];
+  const color=!enabled[i]?"#b4bdcd":
+   p?(p.hits.length?"#ce4260":"#3264db"):"#52688f";
+  const signature=enabled[i]+":"+
+   (p?p.id+":"+p.hits.length:"idle")+":"+(pinned?pinned.dev:"none");
+  if(n.signature!==signature){
+   n.signature=signature;
+   n.node.setAttribute("opacity",enabled[i]?1:.45);
+   n.node.setAttribute("aria-pressed",String(enabled[i]));
+   n.node.setAttribute("aria-label","Устройство "+(i+1)+", "+
+    (enabled[i]?"включено":"выключено")+". Нажмите для переключения.");
+   n.pic.style.color=color;
+   n.disc.setAttribute("fill",pinned&&pinned.dev===i?"#fff0ce":"#edf2fc");
+   n.led.setAttribute("fill",enabled[i]?(p?color:"#21876e"):"#aeb6c6");
+   NET.routes[i].setAttribute("stroke",p?color:"#dfe5f0");
+   NET.routes[i].setAttribute("stroke-dasharray",p?"":"4 6");
+   NET.routes[i].setAttribute("stroke-width",p?3:2);
+  }
+ }
+ const visible=new Set();
+ for(const p of active){
+  visible.add(p.id);
+  let f=NET.flightsMap.get(p.id);
+  if(!f){
+   const node=sv("g",{"data-packet":p.id});
+   const body=sv("rect",{x:-14,y:-9,width:28,height:18,rx:4});
+   node.appendChild(body);
+   node.appendChild(sv("path",{
+    d:"M-10 -5L0 2L10 -5",fill:"none",stroke:"#fff","stroke-width":1.5
+   }));
+   node.appendChild(sv("text",{x:-11,y:24},"#"+p.id));
+   NET.flights.appendChild(node);
+   f={node,body};NET.flightsMap.set(p.id,f);
+  }
+  const a=packetPoint(p,g,engine.t);
+  f.node.setAttribute("transform","translate("+a.x+","+a.y+")");
+  const color=p.hits.length?"#ce4260":"#3264db";
+  if(f.color!==color){f.body.setAttribute("fill",color);f.color=color;}
+ }
+ for(const [id,f]of NET.flightsMap){
+  if(!visible.has(id)){f.node.remove();NET.flightsMap.delete(id);}
+ }
+ const damaged=active.some(p=>p.hits.length);
+ const recent=engine.history.filter(p=>
+  p.done&&engine.t-p.end>=0&&engine.t-p.end<.65
+ );
+ const last=recent[recent.length-1];
+ NET.ring.setAttribute("stroke",damaged?"#ce4260":active.length?"#3264db":"#b9c9e9");
+ NET.outcome.setAttribute("opacity",last?1-(engine.t-last.end)/.65:0);
+ if(last){
+  NET.outcome.setAttribute("cx",g.cx);NET.outcome.setAttribute("cy",g.cy);
+  NET.outcome.setAttribute("r",40+(engine.t-last.end)*25);
+  NET.outcome.setAttribute("stroke",last.hits.length?"#ce4260":"#21876e");
+ }
+ $("air-state").textContent=active.length>1
+  ?"Коллизия: "+active.map(p=>"#"+p.id).join(" + ")
+  :damaged?"Повреждённый пакет #"+active[0].id
+  :active.length?"Передаётся пакет #"+active[0].id
+  :last?(last.hits.length?"Пакет потерян":"Пакет принят"):"Канал свободен";
+ $("air-state").dataset.state=damaged?"bad":active.length?"busy":"idle";
+}
+
+function graph(){
+ const w=Math.max(240,$("graph").clientWidth),h=290,L=54,R=18,T=14,B=45;
+ const n=ids().length,live=!manual&&engine.t>=20&&n;
+ const xmax=n?Math.max(n*.7,live?engine.sent/engine.t*1.05:0):1;
+ const ymax=Math.max(n===1?.8:.55,
+  live?engine.good/engine.t*1.1:0,...sweep.map(p=>p.s*1.1));
+ const x=v=>L+v/xmax*(w-L-R),y=v=>h-B-v/ymax*(h-T-B);
+ const text=(a,b,t)=>'<text x="'+a+'" y="'+b+'">'+esc(t)+'</text>';
+ let s="";
+ for(let i=0;i<=4;i++){
+  const a=xmax*i/4,b=ymax*i/4;
+  s+='<path d="M'+x(a)+' '+T+'V'+(h-B)+"M"+L+" "+y(b)+"H"+(w-R)+
+   '" stroke="#e2e6ef"/>'+text(x(a)-(i===4?28:9),h-B+21,fmt(a,1))+
+   text(4,y(b)+4,fmt(b));
+ }
+ s+=text(L,12,"S, пакетов / T")+
+  text(Math.max(L,w/2-55),h-5,"λ, попыток / T");
+ const curve=(fn,cap=xmax)=>Array.from({length:181},(_,i)=>{
+  const g=Math.min(xmax,cap)*i/180;
+  return (i?"L":"M")+x(g)+","+y(fn(g));
+ }).join(" ");
+ s+='<path d="'+curve(g=>g*Math.exp(-(mode==="pure"?2:1)*g))+
+  '" fill="none" stroke="#8b93a9" stroke-width="2" stroke-dasharray="6 4"/>';
+ if(n){
+  s+='<path d="'+curve(g=>finiteS(mode,n,g),n)+
+   '" fill="none" stroke="#3264db" stroke-width="2.5"/>';
+ }
+ s+='<path d="M'+x(n*q)+" "+T+"V"+(h-B)+
+  '" stroke="#3264db" stroke-opacity=".35"/>';
+ for(const p of sweep){
+  s+='<circle cx="'+x(p.g)+'" cy="'+y(p.s)+
+   '" r="4" fill="#d08225"><title>λ='+fmt(p.g,3)+
+   ", S="+fmt(p.s,3)+'</title></circle>';
+ }
+ if(live){
+  s+='<circle cx="'+x(engine.sent/engine.t)+'" cy="'+y(engine.good/engine.t)+
+   '" r="5" fill="#21876e"><title>Текущий опыт</title></circle>';
+ }
+ $("graph").setAttribute("viewBox","0 0 "+w+" "+h);
+ $("graph").innerHTML=s;
+ $("graph-note").textContent=manual
+  ?"Сейчас показан ручной пример. Кривые относятся к случайному потоку для N = "+n+"; вертикальная линия — его настройка λ = "+fmt(n*q)+". Ручной пример не добавляется на график."
+  :n
+  ?"N = "+n+" · λ заданная = "+fmt(n*q)+
+   " · S теор. = "+fmt(finiteS(mode,n,n*q),3)+
+   (sweep.length?" · "+sweep.length+" точек, по 8 000 T."
+    :manual?" · Ручной пример не добавляется на график."
+    :" · Текущая точка появляется после 20 T.")
+  :"Включите хотя бы одно устройство.";
+}
+function drawAll(){stats();journal();paintTimeline();paintNetwork();graph();}
+
+function selfChecks(){
+ const tests=[],check=(name,ok)=>tests.push({name,ok:!!ok});
+ let e=new Engine("pure",[0,1],0);
+ e.start(0,0);e.start(1,.55);e.finish(2);
+ check("Частичное перекрытие: два потерянных пакета",e.bad===2);
+ e=new Engine("pure",[0,1],0);
+ e.start(0,0);e.finish(1);e.start(1,1);e.finish(2);
+ check("Касание границ: два успешных пакета",e.good===2&&e.bad===0);
+ e=new Engine("pure",[0,1],0);
+ e.start(0,0);e.start(1,1-5e-10);e.finish(3);
+ check("Короткое перекрытие остаётся коллизией",e.bad===2);
+ e=new Engine("pure",[0,1,2],0);
+ e.start(0,0);e.start(1,.7);e.finish(1.4);e.start(2,1.4);e.finish(3);
+ check("Цепочка коллизий: потеряны три пакета",e.bad===3);
+ e=new Engine("slotted",[0,1],1);e.advance(20);
+ check("Две передачи в каждом слоте: только потери",e.good===0&&e.bad===40);
+ e=new Engine("pure",[0],.6);e.advance(100);
+ check("Одно устройство не сталкивается с собой",e.bad===0&&e.good>0);
+ e=new Engine("pure",[],.2);e.advance(100);
+ check("Все устройства выключены: передач нет",e.sent===0);
+
+ for(const m of ["pure","slotted"]){
+  const p=sample(m,6,.9,42,20000);
+  check((m==="pure"?"Обычная":"Слотовая")+": согласование с теорией",
+   Math.abs(p.s-finiteS(m,6,.9))<.015);
+  check((m==="pure"?"Обычная":"Слотовая")+": баланс пакетов",
+   p.sent===Math.round(p.s*20000)+p.bad);
+  const a=new Engine(m,[0,1,2],.4,88),b=new Engine(m,[0,1,2],.4,88);
+  a.advance(20);
+  for(let i=1;i<=120;i++)b.advance(i/6);
+  check((m==="pure"?"Обычная":"Слотовая")+": результат не зависит от кадров",
+   a.sent===b.sent&&a.good===b.good&&a.bad===b.bad);
+ }
+ for(const width of [320,900]){
+  const g=geometry(width);
+  check(width+" px: устройства помещаются в поле",
+   g.points.every(p=>p.x>=29&&p.x+29<=width&&p.y+46<=g.h));
+  check(width+" px: траектории доходят до приёмника",
+   g.points.every((_,dev)=>{
+    const p=packetPoint({dev,start:0},g,1);
+    return Math.abs(Math.hypot(p.x-g.cx,p.y-g.cy)-40)<1e-8;
+   }));
+  let err=0;
+  for(const t of [10.5,74.499999,74.5,74.500001,1000]){
+   const v=timeView(width,t),p=t-.7;
+   err=Math.max(err,Math.abs(
+    (p-v.origin)*v.scale+v.L-(v.start-v.origin)*v.scale-
+    (v.L+(p-v.start)*v.scale)));
+  }
+  check(width+" px: непрерывность прокрутки при смене начала координат",err<1e-8);
+ }
+ return tests;
+}
+
+$("mode").onchange=e=>{mode=e.target.value;reset(true);};
+$("load").oninput=e=>{q=Number(e.target.value);reset(false);};
+$("speed").onchange=e=>{
+ const now=performance.now();
+ clock(now);speed=Number(e.target.value);
+ anchor(Math.max(now,previous));drawAll();
+};
+$("run").onclick=()=>{
+ const was=running,now=performance.now();clock(now);
+ if(was){running=false;drawAll();return;}
+ if(ended){demo(demoKind);return;}
+ clearSelection();running=true;anchor(Math.max(now,previous));drawAll();
+};
+$("step").onclick=()=>{
+ running=false;clearSelection();advanceTo(engine.t+1);
+ anchor(performance.now());drawAll();
+};
+$("step-small").onclick=()=>{
+ running=false;clearSelection();advanceTo(engine.t+.1);
+ anchor(performance.now());drawAll();
+};
+$("fast").onclick=()=>{
+ running=false;clearSelection();if(manual)reset(false);
+ engine.advance(engine.t+1000);anchor(performance.now());drawAll();
+};
+$("reset").onclick=()=>{running=false;seed++;reset(false);};
+$("random").onclick=()=>{
+ reset(false);running=true;anchor(performance.now());drawAll();
+};
+$("single").onclick=()=>demo(false);
+$("collision").onclick=()=>demo(true);
+for(const m of ['pure','slotted'])$("compare-"+m).onclick=()=>{
+ mode=m;$("mode").value=m;reset(true);demo('alignment');
+};
+$("unselect").onclick=()=>{clearSelection();drawAll();};
+$("network").onclick=e=>{
+ const p=e.target.closest("[data-packet]"),d=e.target.closest("[data-device]");
+ if(p)pickPacket(Number(p.dataset.packet));
+ else if(d)toggleDevice(Number(d.dataset.device));
+};
+$("network").onkeydown=e=>{
+ const d=e.target.closest("[data-device]");
+ if(d&&(e.key==="Enter"||e.key===" ")){
+  e.preventDefault();toggleDevice(Number(d.dataset.device));
+ }
+};
+for(const id of ["timeline","collision-log"]){
+ $(id).onclick=e=>{
+  const p=e.target.closest("[data-packet]");
+  if(p)pickPacket(Number(p.dataset.packet));
+ };
+ $(id).onkeydown=e=>{
+  const p=e.target.closest("[data-packet]");
+  if(p&&(e.key==="Enter"||e.key===" ")){
+   e.preventDefault();pickPacket(Number(p.dataset.packet));
+  }
+ };
+ $(id).onfocusin=()=>{running=false;stats();};
+}
+$("sweep").onclick=()=>{
+ if(sweepBusy||!ids().length)return;
+ running=false;sweep=[];sweepBusy=true;clearSelection();
+ const token=++sweepToken,n=ids().length,m=mode,count=25;
+ function next(i){
+  if(token!==sweepToken)return;
+  const g=n*.7*i/(count-1);
+  sweep.push({...sample(m,n,g,1000+i),g:g});
+  $("sweep").textContent="Расчёт "+Math.round((i+1)/count*100)+"%";
+  drawAll();
+  if(i+1<count)setTimeout(()=>next(i+1),0);
+  else{
+   sweepBusy=false;$("sweep").textContent="Перестроить по симуляции";stats();
+  }
+ }
+ next(0);
+};
+$("check").onclick=()=>{
+ const r=selfChecks();$("checks").hidden=false;
+ $("checks").innerHTML=r.map(t=>
+  '<div class="'+(t.ok?"pass":"fail")+'">'+
+  (t.ok?"✓ ":"× ")+esc(t.name)+'</div>'
+ ).join("");
+};
+function frame(now){
+ const was=running;clock(now);
+ if(was){paintTimeline();paintNetwork();}
+ if((was&&!running)||(running&&now-lastStats>=125)){
+  stats();journal();lastStats=now;
+ }
+ if((was&&!running)||(running&&now-lastGraph>=600)){
+  graph();lastGraph=now;
+ }
+ requestAnimationFrame(frame);
+}
+
+controls();initTimeline();initNetwork();
+engine=new Engine(mode,ids(),q,seed);
+resizeTimeline();resizeNetwork();drawAll();
+
+document.addEventListener("visibilitychange",()=>{
+ const now=performance.now();
+ if(document.hidden){clock(now,true);previous=null;}
+ else anchor(now);
+ drawAll();
+});
+if(typeof ResizeObserver!=="undefined"){
+ let width=root.clientWidth;
+ new ResizeObserver(()=>{
+  if(root.clientWidth===width)return;
+  width=root.clientWidth;
+  resizeTimeline();resizeNetwork();graph();
+ }).observe(root);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

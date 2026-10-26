@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HTTP/1.1, HTTP/2 и HTTP/3 — очередь, потери и потоки</title>
+<style>
+*{box-sizing:border-box}
+:root{color-scheme:dark;--bg:#0c1220;--panel:#141e30;--line:#304057;--ink:#ecf2fc;--muted:#b5c2d6;--green:#61dfbd;--amber:#ffcb72}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,sans-serif}
+main{max-width:1680px;margin:auto;padding:26px}
+header{display:flex;justify-content:space-between;align-items:start;gap:20px}
+h1{font-size:29px;letter-spacing:-.8px;margin:5px 0 8px}h2{font-size:19px;margin:0}
+p{color:var(--muted);margin:6px 0}
+.eyebrow{font-size:11px;letter-spacing:2px;color:var(--green);font-weight:700}
+.badge{padding:7px 12px;border:1px solid var(--line);border-radius:20px;color:var(--green);white-space:nowrap;font-size:12px}
+.panel,.controls,details,.note{background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.controls{padding:16px;margin:20px 0 12px}
+.settings{display:grid;grid-template-columns:repeat(5,1fr);gap:18px}
+label{font-size:12px;color:var(--muted)}
+label output{float:right;color:var(--ink);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--green);display:block}
+button,select{font:inherit;border:1px solid #455771;border-radius:8px;background:#203049;color:var(--ink);padding:8px 11px;cursor:pointer}
+button:hover,select:hover{border-color:#a1badc}
+button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible,a:focus-visible{outline:3px solid var(--amber);outline-offset:3px}
+button:disabled,select:disabled{opacity:.5;cursor:default}
+.primary{background:var(--green);color:#08271e;font-weight:700;border-color:transparent}
+.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:13px;margin-top:13px}
+.controls>.toolbar{border:0;padding:0;margin:0}
+.controls>details{padding:10px 0 0;border:0;border-radius:0;margin-top:12px;border-top:1px solid var(--line)}
+.controls .settings{margin-top:14px}
+.compare{padding:14px;margin:12px 0;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.compareGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+.compareCard{border:1px solid var(--line);border-radius:8px;padding:10px}
+.compareCard p{color:var(--ink);margin:3px 0 7px;font-variant-numeric:tabular-nums}
+.compare .note{background:#101827;margin:10px 0 0;font-size:13px;padding:9px 12px}
+.toolbar label{display:flex;align-items:center;gap:8px}
+.clock{font-variant-numeric:tabular-nums;margin-left:auto;font-size:18px}
+.small,.sub{font-size:12px;color:var(--muted)}
+.small{margin-top:10px}
+.pickbar{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin-top:13px}
+.pickbar select{max-width:100%;min-width:220px}
+#notice{min-height:25px;color:var(--amber);font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:16px;row-gap:12px}
+.protocolPanel{display:grid;grid-template-rows:subgrid;grid-row:span 9;row-gap:12px}
+.timing>.sub>span{display:block;min-height:18px}
+[hidden]{display:none!important}
+.panelSender{font-size:12px;color:var(--muted);margin:10px 0}
+.panel{padding:17px;min-width:0}
+.paneltitle{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.paneltitle p{font-size:12px;margin-top:3px}
+.protocol{font-size:11px;border-radius:6px;padding:5px 9px;background:#22304a}
+.http1{color:#ffbe78}.tcp{color:#86b5ff}.quic{color:#61dfbd}
+.nethead{display:flex;align-items:center;justify-content:space-between;margin:12px 0 7px;color:var(--muted);font-size:11px}
+.nethead span:first-child,.nethead span:last-child{display:flex;align-items:center;gap:5px}
+.nethead svg{width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:1.8}
+.lane{display:flex;align-items:center;gap:9px;height:38px}
+.lanename{font-size:11px;width:48px;flex-shrink:0}
+.track{position:relative;flex:1;height:30px;min-width:0}
+.track:before{content:"";position:absolute;left:0;right:0;top:15px;border-top:1px dashed #42526d}
+.track.serializing:after{content:"";position:absolute;left:0;top:9px;width:9px;height:12px;border-radius:2px;background:var(--amber)}
+.packet{position:absolute;top:2px;width:54px;height:26px;font-size:12px;font-weight:700;padding:2px;color:#071a25;border:0;border-radius:5px;z-index:2}
+.connectionGroup{border:1px solid #52647e;border-left:3px solid #829bbd;border-radius:7px;padding:6px;margin:6px 0}
+.connectionName{font-size:12px;font-weight:700;color:var(--ink)}
+.connectionGroup .lanename{width:76px;font-size:12px;white-space:nowrap}
+.primer{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0}
+.primer>div{padding:10px 12px;border-left:3px solid var(--line);background:var(--panel);border-radius:6px}
+.primer p{font-size:13px}
+.lesson-question{margin:12px 0;border-left:3px solid var(--green);padding:8px 12px;background:#10271f}
+.h1control{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:13px}
+.h1control label{font-size:13px;color:var(--ink)}
+.packet:disabled{opacity:.9}
+.metrics{display:flex;gap:13px;flex-wrap:wrap;border-block:1px solid var(--line);padding:9px 0;margin-top:12px;font-size:12px}
+.metrics b{font-variant-numeric:tabular-nums}
+.receiver{margin-top:12px;padding:10px;background:#0f1828;border:1px solid var(--line);border-radius:9px}
+.queue{display:flex;gap:7px;align-items:start;margin-top:7px}
+.queueName{width:43px;flex-shrink:0;font-size:11px;padding-top:3px}
+.blocks{display:flex;gap:4px;flex-wrap:wrap;min-width:0}
+.block{display:inline-block;min-width:32px;padding:2px 4px;text-align:center;font-size:10px;font-variant-numeric:tabular-nums;border:1px solid #455771;border-radius:4px;color:#b5c2d6}
+.block.delivered{color:var(--green);border-color:#387c6b}
+.block.buffered{color:#101827;background:var(--amber);border-color:var(--amber)}
+.block.gap{color:#ffadb0;border:2px dashed #ffadb0;padding:1px 3px}
+.queueLegend{font-size:11px;color:var(--muted);margin-top:7px}
+.amber{color:var(--amber)}
+.page{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:14px 0;background:#101827}
+.browserbar{font-size:11px;background:#202d42;padding:6px 10px;color:var(--muted)}
+.objects{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:11px}
+.object{border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.object:first-child{grid-column:1/-1}
+.art{height:56px;display:flex;align-items:center}
+.art svg{height:100%;width:100%}
+.object:first-child .art{height:38px}
+.objlabel{display:flex;justify-content:space-between;gap:4px;padding:5px 8px;font-size:11px}
+.progress{height:3px;background:#2a3850}
+.progress i{display:block;height:100%;width:0}
+.timeline{overflow-x:auto;margin-top:7px}
+.timeline svg{display:block;width:100%}
+.legend{font-size:12px;color:var(--muted);margin:8px 0}
+.note{padding:12px 16px;margin:15px 0;border-left:3px solid var(--amber)}
+#recovery{font-size:12px;color:var(--muted);margin-top:5px}
+.log{margin:12px 0}
+.events{list-style:none;padding:0;margin:10px 0 0;font-size:12px;color:var(--muted)}
+.events li{padding:4px 0;border-top:1px solid var(--line)}
+.events time{display:inline-block;min-width:83px;color:var(--ink);font-variant-numeric:tabular-nums}
+.charttools{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:12px 0}
+.chartwrap{overflow-x:auto}
+.chartwrap svg{width:100%;min-width:530px;display:block}
+.chartwrap table{width:100%;min-width:620px;border-collapse:collapse;margin-top:12px;font-size:12px;font-variant-numeric:tabular-nums}
+td,th{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right}
+td:first-child,th:first-child{text-align:left}
+th{font-weight:500;color:var(--muted)}
+caption{text-align:left;color:var(--muted);padding:6px 0}
+details{padding:13px 16px;margin-top:13px}
+summary{cursor:pointer;color:var(--muted)}
+details p,details li{font-size:12px;color:var(--muted)}
+details li{margin:7px 0}
+a{color:#9fc6ff}
+.testbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}
+#testResult{font-size:12px;color:var(--green)}
+.lessonNav{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.startup{margin:16px 0;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:14px;scroll-margin-top:12px}
+.startupGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px}
+.startupCard{min-width:0;padding:12px;border:1px solid var(--line);border-radius:8px;background:#101827}
+.startupCard h3{margin:0;font-size:16px}.startupCard p{font-size:12px}
+.startupSvg svg{display:block;width:100%;max-height:300px}
+.startupState{min-height:76px;color:var(--amber)!important}
+.startupMetric{border-top:1px solid var(--line);padding-top:6px}
+.startupMetric b{color:var(--ink)}
+.startupControls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+.startupControls label{display:flex;align-items:center;gap:8px}
+.startupControls input{width:140px}.startupControls output{min-width:45px}
+.benefit{color:var(--green)!important}.sectionLead{margin-top:24px;scroll-margin-top:12px}
+@media(max-width:700px){.startupGrid{grid-template-columns:1fr}.startupCard{max-width:100%}.startupSvg svg{max-height:340px}.startupControls .clock{width:100%}}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}.protocolPanel{display:block;grid-row:auto}}
+@media(max-width:800px){main{padding:15px}.settings{grid-template-columns:1fr 1fr}header{display:block}.badge{display:inline-block;margin-top:10px}h1{font-size:25px}.clock{margin-left:0}.panel{padding:14px}}
+@media(max-width:520px){.compareGrid{grid-template-columns:1fr}.controls>.toolbar{display:grid;grid-template-columns:1fr 1fr}.toolbar>#hol{grid-column:1/-1}.controls>.toolbar>button{min-width:0;padding:8px}.clock{text-align:center;font-size:16px}.compare{padding:12px}.compareCard{padding:8px}.compareCard p{margin:3px 0}.controls>details>summary{font-size:12px}}
+@media(max-width:700px){.primer{grid-template-columns:1fr}}
+.sharedSettings{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin:12px 0}
+.phaseStrip{height:82px}.phaseStrip svg{display:block;width:100%;height:82px}
+.stageText{font-size:12px!important;min-height:54px;color:var(--amber)!important}
+.milestones{font-size:12px;min-height:40px;font-variant-numeric:tabular-nums;border-bottom:1px solid var(--line);padding-bottom:5px;margin-bottom:7px}
+.controls{margin:14px 0 10px}.controls>.toolbar{gap:6px}.controls>.toolbar>button{padding:7px 9px}
+@media(min-width:1001px){.compareGrid{align-items:start}.compareCard{padding:9px}}
+@media(max-width:700px){.sharedSettings{gap:9px}.stageText{min-height:0}.compareGrid{grid-template-columns:1fr}}
+.compareGrid{column-gap:10px;row-gap:0}.compareCard{display:grid;grid-template-rows:subgrid;grid-row:span 5;row-gap:0}
+.h1control #connectionMode{max-width:245px}.h1control #h1Connections{max-width:145px}.h1control #scenario{max-width:180px}
+.h1control>label:has(select){display:flex;align-items:center;gap:7px}.h1control label{font-size:12px}
+.modelScope{margin:7px 0;font-size:12px;color:var(--amber)}.controls>details{margin-top:7px;padding-top:7px}
+@media(max-width:700px){.compareCard{display:block;grid-row:auto}.h1control{display:grid;grid-template-columns:1fr}.h1control select{max-width:100%!important}}
+select{max-width:100%;min-width:0}
+.milestones{min-height:36px}
+@media(max-width:700px){.h1control>label:has(select){display:block}.h1control>label:has(select)>select{display:block;width:100%;margin-top:5px}}
+.multiplexLesson{margin:10px 0 12px;padding:10px 12px;background:#101827;border-left:3px solid var(--green);border-radius:7px}.multiplexLesson p{font-size:13px;color:var(--ink)}.multiplexLesson>button{margin:5px 0}
+.parallelStats{font-size:12px;color:var(--ink);margin:7px 0 2px;border-top:1px solid var(--line);padding-top:6px;min-height:46px}.parallelStats strong{color:var(--green)}.parallelStats .pending{color:#cfb2ff}
+.requestState{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);pointer-events:none}
+.track.requestQueued{background:#241e39;border:1px dashed #8d72b6;border-radius:5px}.track.requestQueued:before,.track.requestQueued:after{display:none}.track.requestQueued .requestState{color:#dfcaff;font-weight:600}
+.track.requestInFlight .requestState{background:#141e30}.coverage{color:var(--green)}
+</style>
+
+<main>
+<header>
+<div>
+<div class="eyebrow">NETWORK LAB · HTTP/1.1 · HTTP/2 · HTTP/3</div>
+<h1>От HTTP/1.1 к HTTP/3: что стало лучше?</h1>
+<p>Один запуск и одни часы: рукопожатие → HTTP-запрос → пакеты ответа → повтор при потере.</p>
+</div>
+</header>
+<section class="controls" id="dataControls" aria-label="Настройки эксперимента">
+<div class="toolbar">
+
+
+
+<button id="firstData">К первому блоку</button><button id="lossMoment">К блокировке</button><button id="recovered">После повтора</button>
+<button id="play" class="primary">▶ Запустить всё</button>
+<button id="next">Шаг к событию</button>
+<button id="restart">↺ Повторить</button>
+<span class="clock" id="clock">0,0 мс</span>
+</div>
+<div class="h1control"><label for="scenario">Сценарий<select id="scenario" ><option value="one">Потеря пакета №2</option><option value="random" selected>Только случайные потери</option></select></label><label for="connectionMode">Соединение</label><select id="connectionMode"><option value="cold">Новое · TCP/TLS или QUIC с нуля</option><option value="warm">Уже установлено · повторный запрос</option></select><label for="h1Connections">TCP-соединений HTTP/1.1</label><select id="h1Connections"><option value="1">1 — последовательно</option><option value="2" selected>2 — параллельно</option></select></div>
+<p id="modelScope" class="modelScope"></p>
+<details id="experimentSettings">
+<summary>Настройки сети, скорость и ручные потери</summary><button id="hol">Потеря блока №2</button><button id="multiplex">6 объектов · 2 TCP</button><button id="baseline">Без потерь</button>
+<p>Кнопки сценариев начинают весь запуск заново с нулевого времени. Кнопки перехода меняют момент на той же общей шкале, сохраняя трассы. Случайные и ручные потери доступны здесь для свободного исследования.</p>
+<p class="small">RTT — время пути туда и обратно. Канал задаёт общую скорость передачи всех соединений в одном опыте. Seed задаёт воспроизводимый набор случайных потерь.</p>
+<div class="sharedSettings"><label for="rtt">RTT <output id="rttV"></output><input id="rtt" type="range" min="40" max="600" step="20" value="180"></label><label for="mbps">Канал <output id="mbpsV"></output><input id="mbps" type="range" min=".1" max="10" step=".1" value="1"></label><label for="n">Объекты <output id="nV"></output><input id="n" type="range" min="2" max="6" step="1" value="4"></label></div><div class="settings">
+
+
+<label for="loss">Случайные потери <output id="lossV"></output><input id="loss" type="range" min="0" max="20" step="1" value="0"></label>
+
+
+</div>
+
+<div class="toolbar">
+<button id="clearLoss" disabled>Сбросить ручные потери</button>
+<button id="newSeed">Другой seed</button>
+<label for="speed">Скорость<select id="speed"><option value=".25">0,25×</option><option value=".5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option><option value="16">16×</option><option value="32">32×</option></select></label>
+</div>
+
+<div class="pickbar">
+<label for="lossTarget">Где потерять пакет</label>
+<select id="lossTarget"><option value="tcp">HTTP/2</option><option value="quic">HTTP/3</option><option value="http1">HTTP/1.1</option></select>
+<label for="packetSelect">Пакет для ручной потери</label>
+<select id="packetSelect"></select>
+<button id="drop">Потерять в HTTP/2</button>
+<span class="sub" id="pickCount"></span>
+</div>
+
+<p class="small">Ручная потеря изменяет только выбранный протокол: из-за разного времени старта один и тот же блок в другом опыте может уже прийти. Выбор пакета останавливает время. Можно нажать и на пакет в анимации; при наложении откроется выбор. 1× = 120 мс модели в секунду. <span class="amber">Жёлтая метка у сервера</span> — сериализация. Seed: <b id="seedV">42</b>.</p>
+<p class="small">«Повторить» сохраняет ручные потери. После возврата назад новая ручная потеря отменяет будущие ручные потери в выбранной трассе. Изменение параметров сети, сценария или seed начинает новый опыт без ручных потерь.</p>
+</details>
+</section>
+
+<div id="notice" role="status" aria-live="polite"></div>
+<section class="compare" aria-label="Краткое сравнение выдачи данных">
+<h2>Один момент времени — три протокола рядом</h2>
+<div class="multiplexLesson">
+<p><b>Зачем HTTP/2 одно TCP-соединение?</b> В HTTP/1.1 без pipelining два TCP позволяют получать два ответа параллельно; остальные запросы ждут <b>полного предыдущего ответа</b> в своём соединении. HTTP/2 может запросить все четыре объекта и <b>чередовать части их ответов в одном TCP</b>.</p>
+<button id="whyHttp2">Показать: 4 объекта, 2 TCP против 1 TCP</button>
+<p class="sub">Сравните число объектов с данными и очередь запросов. Преимущество HTTP/2 — много запросов на одном соединении. Общая скорость канала остаётся прежней; время всей загрузки зависит от условий.</p>
+<details><summary>Чем приходится платить за дополнительные TCP?</summary>
+<p><b>Установка и ресурсы.</b> Для каждого нового защищённого TCP нужны свои TCP/TLS-рукопожатия, буферы и состояние на клиенте и сервере. Два соединения можно устанавливать параллельно: задержка не обязана удваиваться, но работы и служебного трафика больше. HTTP/2 позволяет обслуживать много запросов с одним набором этих затрат.</p>
+<p><b>Масштабирование.</b> Два TCP облегчают очередь HTTP/1.1, но при десятках объектов очередь остаётся. Дальнейшее увеличение числа соединений расходует дополнительные ресурсы и создаёт больше независимо конкурирующих отправителей. Потоки HTTP/2 используют одно TCP и его общее окно.</p>
+<p><b>Обратная сторона одного TCP.</b> В HTTP/1.1 потеря данных одного соединения не блокирует выдачу из другого. В HTTP/2 пропуск в TCP задерживает выдачу всех его потоков. HTTP/3 переносит порядок доставки на уровень отдельных потоков QUIC; общий канал и управление перегрузкой по-прежнему связывают их скорости.</p>
+<p class="sub">В этой демонстрации видны очередь запросов, число соединений, этапы установки и эффект потерь. Расход памяти, процессорное время, объём служебного трафика и сжатие заголовков не рассчитываются. Поэтому секундомер не показывает всю цену дополнительных TCP. Основание: <a href="https://www.rfc-editor.org/rfc/rfc9113.html#section-1">зачем создан HTTP/2</a> и <a href="https://www.rfc-editor.org/rfc/rfc9112.html#section-9.4">издержки параллельных соединений</a>.</p>
+</details>
+</div>
+
+<div class="compareGrid" id="overview">
+<article class="compareCard" id="http1Overview"><b class="http1">HTTP/1.1 · TCP + TLS</b><div id="http1Phases" class="phaseStrip"></div><p id="http1Stage" class="stageText"></p><div id="http1Milestones" class="milestones"></div><div class="parallelStats" id="http1Parallel"></div></article>
+<article class="compareCard" id="tcpOverview"><b class="tcp">HTTP/2 · TCP + TLS</b><div id="tcpPhases" class="phaseStrip"></div><p id="tcpStage" class="stageText"></p><div id="tcpMilestones" class="milestones"></div><div class="parallelStats" id="tcpParallel"></div></article>
+<article class="compareCard" id="quicOverview"><b class="quic">HTTP/3 · QUIC + TLS</b><div id="quicPhases" class="phaseStrip"></div><p id="quicStage" class="stageText"></p><div id="quicMilestones" class="milestones"></div><div class="parallelStats" id="quicParallel"></div></article>
+</div>
+<p id="http1Insight" class="small"></p>
+<div class="note"><div id="insight"></div><div id="recovery"></div></div>
+<details><summary>Как читать единый запуск и какие допущения сделаны?</summary><p>Время 0 — отправка SYN у HTTP/1.1 и HTTP/2 и QUIC Initial с ClientHello у HTTP/3. Сначала устанавливается защищённое соединение, затем HTTP-запрос достигает сервера, и только после этого начинается отправка блоков ответа. Все три колонки показывают один и тот же момент, шкалы времени одинаковы.</p><p>Для нового HTTPS-соединения выбран TLS 1.3: TCP + TLS позволяют отправить запрос через 2 RTT; QUIC + TLS — через 1 RTT. Третий ACK TCP может уйти вместе с ClientHello. Все TCP HTTP/1.1 устанавливаются параллельно; их задержки не складываются. Режим «Уже установлено» сохраняет готовые защищённые соединения: это повторное использование, а не 0-RTT нового соединения.</p><p>Все объекты уже известны клиенту и доступны серверу. DNS, размеры служебных сообщений, потери рукопожатия, TCP Fast Open, QUIC Retry, TLS HelloRetryRequest, ограничения anti-amplification, обработка сервера и HPACK/QPACK не моделируются. В учебном режиме HTTP/1.1 допускается не более 2 TCP-соединений, как на слайде 13 презентации. В каждом соединении отключён pipelining. Это ограничение модели курса, не универсальный предел современного HTTP/1.1. Один общий канал задан отдельно для каждого сравниваемого опыта, а не одновременно делится между тремя протоколами. Стартовое окно каждого соединения — 8 блоков. Поэтому несколько TCP HTTP/1.1 могут получить большую суммарную квоту; фиксированного победителя нет.</p><p>TCP сохраняет один порядок байтов на соединение. HTTP/2 чередует ответы потоков в одном TCP. QUIC сохраняет порядок отдельно в каждом потоке; потери могут уменьшать общее окно и задерживать будущую отправку. «Первый блок» — полностью полученный и выданный приложению блок из 1200 байт, а не первый байт страницы. Цветная полоска показывает прошедшую часть каждой стадии.</p></details>
+</section>
+<h2>Подробные схемы того же запуска</h2>
+<p class="sub" id="streamMapping"></p>
+<p class="small">Все схемы открыты одновременно. На широком экране они стоят рядом, на узком — друг под другом.</p>
+<div class="grid" id="panels"></div>
+<div class="queueLegend">✓ выдано · ! пришёл, но в буфере · ? ожидается перед уже пришедшими блоками</div>
+<p class="small">«Пришло» — блок получен из сети. «Выдано» — браузер уже может использовать эти данные. Блок может прийти, но ждать пропущенного предшественника в буфере.</p>
+
+
+<div class="legend">Номер на пакете — блок данных · ↻ повтор · × потеря · жёлтые отрезки на диаграмме — ожидание в буфере · точки — выдача приложению.</div>
+
+<section class="panel">
+<h2>Что меняется при росте потерь?</h2>
+<div class="charttools">
+<label for="metric">Метрика</label>
+<select id="metric">
+<option value="objects">Средняя готовность объекта</option>
+<option value="gain">Выигрыш HTTP/3 перед HTTP/2</option>
+<option value="page">Время всей страницы</option>
+</select>
+<button id="sweep" class="primary">Построить график</button>
+<span class="sub" id="sweepState"></span>
+</div>
+<p class="small" id="chartConditions">60 прогонов трёх протоколов на точку, seeds 1000–1059. HTTP/1.1: выбранное число TCP-соединений без pipelining. Плановая и ручные потери исключены: график исследует только случайные потери.</p>
+<div class="chartwrap" id="chart"><p>Постройте график для текущих RTT, канала и числа объектов.</p></div>
+<p class="small" id="chartNote">Отрезки — 95% доверительные интервалы среднего, а не диапазон отдельных прогонов.</p>
+<details><summary>Числовые значения и доверительные интервалы</summary><div id="table" class="chartwrap"></div></details>
+</section>
+
+<details>
+<summary>Проверки и независимая критика</summary>
+<p>Ниже сохранена история независимых раундов предыдущих версий. Результаты проверки текущей единой модели перечислены в конце.</p>
+<ol>
+<li><b>Причина блокировки была невидима.</b> Добавлены общая очередь TCP, очереди QUIC, номера блоков и состояние общего окна отправителя.</li>
+<li><b>Повтор стирал ручные потери, график скрывал условия.</b> Повтор сохраняет трассу; сброс ручных потерь выделен отдельно. Подпись графика постоянно показывает параметры и исключение принудительных потерь.</li>
+<li><b>На телефоне сравнение требовало долгой прокрутки.</b> Настройки свёрнуты, добавлены переход к блокировке, компактные соседние результаты и конкретный разбор потери.</li>
+<li><b>Редактирование прошлого могло вызвать исключение.</b> Новая потеря после возврата назад отменяет будущие ручные потери. Трасса обновляется только после успешного пересчёта.</li>
+<li><b>Итоговая независимая проверка — PASS.</b> Пятый критик повторно проверил модель, реальные снимки и браузерные сценарии; существенных замечаний по заданной учебной планке не осталось.</li>
+</ol>
+<h3>Три схемы рядом — 21 октября 2026</h3>
+<ol>
+<li><b>Читаемость и выравнивание.</b> Первый критик нашёл мелкие, обрезанные диаграммы и смещение соответствующих частей схем. Исправлено: диаграммы адаптируются к ширине с подписями 12 px; потоки, метрики, очереди, страницы и диаграммы выровнены по общим строкам.</li>
+<li><b>Независимая проверка действий — PASS.</b> Второй критик проверил клики по пакетам во всех трёх схемах, повтор, независимость трасс и изменение размера окна; существенных дефектов не обнаружено.</li>
+<li id="threeReviewFinal"><b>Итоговый независимый раунд — PASS.</b> Третий критик проверил код, реальные снимки и соответствие презентации; повторил браузерные и модельные проверки. Существенных замечаний не осталось.</li>
+</ol>
+<div class="testbar"><button id="test">Запустить проверки модели</button><span id="testResult">Проверки ещё не запускались в этой вкладке.</span></div>
+<h3>Рукопожатие и учебный маршрут — ещё 3 раунда</h3>
+<p>Первый независимый раунд — PASS по точности протоколов. Второй выявил неверное пояснение очереди при крайних настройках и отсутствие расшифровки назначения SYN/SYN+ACK/ACK; оба замечания исправлены. Третий независимо проверил исправленную версию и дал PASS.</p>
+<p id="qaStatus">Текущая версия ограничивает HTTP/1.1 одним или двумя TCP-соединениями согласно учебному режиму презентации. Пройдены 99 браузерных проверок на каждой из пяти ширин 320–1440 px (495 всего), 523 встроенные проверки модели, 600 стресс-конфигураций и 2400 ручных вмешательств. Дополнительно проверены 192 конфигурации единого запуска, 4 случая запрета неподдерживаемого числа TCP, 5 аналитических случаев HTTP/1.1 и 9 случаев рукопожатия. Сценарий сравнения очередей проверен на холодных и готовых соединениях при крайних значениях RTT и канала. Независимые раунды выше относятся к предыдущим версиям. <a href="HTTP_STUDENT_REVIEW.md">Журнал проверки</a>.</p>
+</details>
+
+<details>
+<summary>Источники и модель передачи данных</summary><p>Для каждого протокола время прибытия первого HTTP-запроса ограничивает начало ответа. В HTTP/1.1 следующие запросы внутри TCP отправляются после полного предыдущего ответа. Все соединения одного опыта делят один сериализатор канала; ни рукопожатия, ни окна нескольких TCP не умножают заданную пропускную способность данных.</p><p>Потери определяются номером блока, попыткой и seed. HTTP/2 и HTTP/3 при одинаковых потерях имеют одинаковое расписание данных относительно начала ответа, но разное абсолютное начало и разный порядок выдачи приложению. Ручные потери независимы. ACK данных приходит через RTT после сериализации; потеря обнаруживается через 1,5 RTT. Это учебный планировщик, а не реализация recovery.</p><p>Объекты имеют размеры 3, 7, 9, 11, 13, 15 блоков по 1200 байт; «видео» — небольшой учебный фрагмент. График включает выбранный режим установления соединения, использует 60 seeds на точку и исключает плановые/ручные потери. Интервалы — приближённые 95% интервалы среднего. Источники: <a href="https://www.rfc-editor.org/rfc/rfc9293.html#section-3.5">TCP</a>, <a href="https://www.rfc-editor.org/rfc/rfc8446.html#section-2">TLS 1.3</a>, <a href="https://www.rfc-editor.org/rfc/rfc9001.html#section-2">QUIC и TLS</a>, <a href="https://www.rfc-editor.org/rfc/rfc9113.html#section-2">HTTP/2</a>, <a href="https://www.rfc-editor.org/rfc/rfc9114.html#section-1.2">HTTP/3</a>.</p>
+</details>
+</main>
+
+<script>
+// Idealised cold HTTPS exchange. All times are measured from the first client flight.
+function handshakePlan(type,rtt){
+ if(!['http1','tcp','quic'].includes(type)||!Number.isFinite(rtt)||rtt<40||rtt>600)throw Error('Недопустимое рукопожатие');
+ const quic=type==='quic';
+ const rows=quic?[
+  ['Initial · ClientHello',0,.5,true,'quic'],
+  ['TLS: ответ сервера',.5,1,false,'tls'],
+  ['Finished + HTTP-запрос',1,1.5,true,'request'],
+  ['Первый байт ответа',1.5,2,false,'response']
+ ]:[
+  ['SYN',0,.5,true,'tcp'],
+  ['SYN + ACK',.5,1,false,'tcp'],
+  ['ACK + ClientHello',1,1.5,true,'tls'],
+  ['TLS: ответ сервера',1.5,2,false,'tls'],
+  ['Finished + HTTP-запрос',2,2.5,true,'request'],
+  ['Первый байт ответа',2.5,3,false,'response']
+ ];
+ return {type,rtt,requestAt:(quic?1:2)*rtt,firstByte:(quic?2:3)*rtt,events:rows.map(([label,s,e,toServer,kind])=>({label,s:s*rtt,e:e*rtt,toServer,kind})),duration:3*rtt};
+}
+function simulate(c,manual=new Map(),preset=false,sequential=false){
+ if(!Number.isInteger(c.n)||c.n<2||c.n>6||!Number.isFinite(c.rtt)||c.rtt<40||c.rtt>600||!Number.isFinite(c.mbps)||c.mbps<.1||c.mbps>10||!Number.isFinite(c.loss)||c.loss<0||c.loss>.2||!Number.isInteger(c.seed))throw Error("Недопустимые параметры");
+ const requestedConnections=sequential===true||sequential===false?1:sequential;
+ if(!Number.isInteger(requestedConnections)||requestedConnections<1||requestedConnections>2)throw Error("Недопустимое число соединений");
+ const connectionCount=sequential?Math.min(c.n,requestedConnections):1;
+ const dataStart=c.dataStart??0;
+ if(!Number.isFinite(dataStart)||dataStart<0)throw Error("Недопустимое время начала ответа");
+ const sizes=Array.from({length:c.n},(_,i)=>i===0?3:5+i*2),originals=[];
+ for(let k=0;k<Math.max(...sizes);k++)for(let j=0;j<c.n;j++)if(k<sizes[j])originals.push({id:originals.length,j,k,conn:sequential?j%connectionCount:0});
+ function random(id,a){
+  let h=(c.seed^Math.imul(id+1,0x9e3779b1)^Math.imul(a+1,0x85ebca6b))>>>0;
+  h=Math.imul(h^(h>>>16),0x7feb352d);h=Math.imul(h^(h>>>15),0x846ca68b);
+  return ((h^(h>>>16))>>>0)/4294967296;
+ }
+ const queues=Array.from({length:connectionCount},(_,conn)=>originals.filter(p=>p.conn===conn).map(p=>({...p,a:0})));
+ if(sequential)for(const q of queues)q.sort((a,b)=>a.j-b.j||a.k-b.k);
+ const orders=queues.map(q=>q.map(p=>p.id)),order=orders.flat(),events=[],flights=[],sender=[],serial=9.6/c.mbps;
+ const gates=Array(c.n).fill(sequential?Infinity:dataStart),successes=Array(c.n).fill(0),lastArrival=Array(c.n).fill(0),requests=[];
+ if(sequential)for(let j=0;j<connectionCount;j++){gates[j]=dataStart;requests.push({j,conn:j,sent:null,available:dataStart})}
+ const states=Array.from({length:connectionCount},()=>({inflight:0,cwnd:8,recoverUntil:0}));
+ let now=0,busy=0,guard=0,turn=0;
+ const record=()=>{
+  const connections=states.map((s,conn)=>({conn,inflight:s.inflight,window:Math.max(2,Math.floor(s.cwnd)),queued:queues[conn].length,retries:queues[conn].filter(p=>p.a>0).length,requestAt:queues[conn].length?gates[queues[conn][0].j]:0}));
+  sender.push({t:now,busy,inflight:connections.reduce((a,s)=>a+s.inflight,0),window:connections.reduce((a,s)=>a+s.window,0),queued:connections.reduce((a,s)=>a+s.queued,0),retries:connections.reduce((a,s)=>a+s.retries,0),requestAt:Math.min(...connections.filter(s=>s.queued).map(s=>s.requestAt)),connections});
+ };
+ record();
+ while(queues.some(q=>q.length)||events.length){
+  if(++guard>100000)throw Error("Превышен предел событий");
+  let nextSend=Infinity,selected=-1;
+  for(let offset=0;offset<connectionCount;offset++){
+   const conn=(turn+offset)%connectionCount,q=queues[conn],s=states[conn];
+   const candidate=q.length&&s.inflight<Math.max(2,Math.floor(s.cwnd))?Math.max(now,busy,gates[q[0].j]):Infinity;
+   if(candidate<nextSend){nextSend=candidate;selected=conn}
+  }
+  const e=events[0];
+  if(e&&e.t<=nextSend){
+   events.shift();now=e.t;const state=states[e.p.conn];state.inflight--;
+   if(e.lost){
+    if(now>=state.recoverUntil){state.cwnd=Math.max(2,state.cwnd/2);state.recoverUntil=now+c.rtt}
+    queues[e.p.conn].unshift({...e.p,a:e.p.a+1});
+   }else state.cwnd=Math.min(32,state.cwnd+1/state.cwnd);
+   record();continue;
+  }
+  if(!Number.isFinite(nextSend))throw Error("Остановка планировщика");
+  now=nextSend;
+  const p=queues[selected].shift(),s=now,end=s+serial,arrival=end+c.rtt/2,key=p.id+":"+p.a;
+  const randomLost=random(p.id,p.a)<c.loss,planned=preset&&key==="1:0",at=manual.get(key),hasManual=at!==undefined;
+  if(hasManual&&(!Number.isFinite(at)||at<end||at>=arrival))throw Error("Потеря вне полёта");
+  const naturalAt=(randomLost||planned)?end+c.rtt*.26:Infinity,lossAt=Math.min(naturalAt,hasManual?at:Infinity),lost=Number.isFinite(lossAt);
+  flights.push({...p,key,s,end,arrival,lossAt,lost});
+  if(sequential&&!lost){
+   successes[p.j]++;lastArrival[p.j]=Math.max(lastArrival[p.j],arrival);
+   const next=p.j+connectionCount;
+   if(successes[p.j]===sizes[p.j]&&next<c.n){
+    const sent=lastArrival[p.j],available=sent+c.rtt/2;
+    gates[next]=available;requests.push({j:next,conn:p.conn,sent,available});
+   }
+  }
+  busy=end;states[selected].inflight++;turn=(selected+1)%connectionCount;
+  events.push({t:end+c.rtt*(lost?1.5:1),p,lost});events.sort((a,b)=>a.t-b.t);record();
+ }
+ const arrival=originals.map(p=>Math.min(...flights.filter(f=>f.id===p.id&&!f.lost).map(f=>f.arrival)));
+ if(!arrival.every(Number.isFinite))throw Error("Неполная доставка");
+ const tcp=[],quic=[],last=Array(c.n).fill(0);
+ for(const sequence of orders){let prefix=0;for(const id of sequence){prefix=Math.max(prefix,arrival[id]);tcp[id]=prefix}}
+ originals.forEach(p=>{last[p.j]=Math.max(last[p.j],arrival[p.id]);quic[p.id]=last[p.j]});
+ const done=rel=>sizes.map((_,j)=>Math.max(...originals.filter(p=>p.j===j).map(p=>rel[p.id]))),duration=Math.max(...tcp);
+ requests.sort((a,b)=>a.j-b.j);
+ const moments=[0,...flights.flatMap(f=>[f.s,f.end,f.arrival,...(f.lost?[f.lossAt,f.end+c.rtt*1.5]:[])]),...requests.flatMap(r=>[r.sent??0,r.available]),...sender.map(s=>s.t),...tcp,...quic,duration].filter(v=>v<=duration);
+ return {sizes,originals,order,orders,sequential:!!sequential,connectionCount,requestedConnections,dataStart,requests,flights,sender,arrival,tcp,quic,doneTCP:done(tcp),doneQUIC:done(quic),duration,moments:[...new Set(moments)].sort((a,b)=>a-b)};
+}
+function connectionPlan(type,rtt,mode='cold'){
+ if(!['cold','warm'].includes(mode))throw Error('Недопустимый режим соединения');
+ const cold=handshakePlan(type,rtt);
+ const events=mode==='cold'?cold.events.filter(e=>e.kind!=='response'):[{label:'HTTP-запрос',s:0,e:rtt/2,toServer:true,kind:'request'}];
+ const requestAt=mode==='cold'?cold.requestAt:0;
+ return {mode,type,rtt,events,requestAt,requestArrival:requestAt+rtt/2};
+}
+function simulateProtocol(c,type,manual=new Map(),preset=false){
+ const setup=connectionPlan(type,c.rtt,c.connectionMode||'cold');
+ if(type==='http1'&&![1,2].includes(c.h1Connections??2))throw Error('В учебной модели HTTP/1.1 допускаются только 1 или 2 TCP-соединения');
+ const m=simulate({...c,dataStart:setup.requestArrival},manual,preset,type==='http1'?(c.h1Connections??2):false);
+ m.setup=setup;
+ if(type==='http1')m.requests=m.requests.map(r=>r.sent===null?{...r,sent:setup.requestAt,initial:true}:r);
+ else m.requests=m.sizes.map((_,j)=>({j,conn:0,sent:setup.requestAt,available:setup.requestArrival,initial:true}));
+ m.moments=[...new Set([...m.moments,...setup.events.flatMap(e=>[e.s,e.e])])].sort((a,b)=>a-b);
+ return m;
+}
+function receiveState(m,type,t){
+ const ordered=m.order.map(id=>m.originals[id]);
+ return ordered.map((p,index)=>{
+  const later=ordered.slice(index+1).some(q=>(type==="tcp"?q.conn===p.conn:q.j===p.j)&&m.arrival[q.id]<=t);
+  const state=m[type][p.id]<=t?"delivered":m.arrival[p.id]<=t?"buffered":later?"gap":"waiting";
+  return {...p,state};
+ });
+}
+function senderState(m,t){
+ const s=m.sender.findLast(s=>s.t<=t);
+ const reason=t>=m.duration?"Все данные выданы приложению":t<s.busy?"Канал занят сериализацией":!s.queued?"Все блоки отправлены; ожидаются подтверждения":m.sequential&&t<s.requestAt?"Ожидание завершения ответа и следующего HTTP-запроса":s.inflight>=s.window?"Ожидание ACK: общее окно заполнено":"Можно отправлять";
+ return {...s,reason};
+}
+function flightState(f,t){
+ if(t<f.s||t>=f.arrival)return {phase:"hidden",u:0};
+ if(t<f.end)return {phase:"serializing",u:0};
+ const lost=f.lost&&t>=f.lossAt;
+ return {phase:lost?"lost":"flight",u:((lost?f.lossAt:t)-f.end)/(f.arrival-f.end)};
+}
+function bufferedSegments(m,type,t){
+ return m.originals.filter(p=>m.arrival[p.id]<=t&&m[type][p.id]>m.arrival[p.id]).map(p=>({id:p.id,start:m.arrival[p.id],end:Math.min(t,m[type][p.id])}));
+}
+function advance(time,elapsed,speed,visible,playing,end){
+ return !visible||!playing?time:Math.min(end,time+Math.max(0,elapsed)*.12*speed);
+}
+function nextMoment(m,t){return m.moments.find(v=>v>t+1e-7)??m.duration}
+function holMoment(m){
+ const candidates=m.moments.map(t=>({t,free:m.tcp.filter((v,i)=>v>t&&m.quic[i]<=t).length,own:m.quic.some((v,i)=>v>t&&m.arrival[i]<=t)})).filter(x=>x.free);
+ const target=Math.min(3,Math.max(0,...candidates.map(x=>x.free)));
+ return (candidates.find(x=>x.free>=target&&x.own)||candidates.find(x=>x.free>=target))?.t;
+}
+function blockList(ids){
+ const parts=[];let start=ids[0],last=start;
+ const add=()=>{if(start!==undefined)parts.push(start===last?"№"+start:"№"+start+"–"+last)};
+ for(const id of ids.slice(1)){if(id===last+1)last=id;else{add();start=last=id}}
+ add();return parts.join(", ");
+}
+function selectableFlights(m,t){return m.flights.filter(f=>f.end<=t&&t<f.arrival&&t<f.lossAt)}
+function pairedStats(values){
+ const mean=values.reduce((a,b)=>a+b,0)/values.length;
+ const variance=values.reduce((a,b)=>a+(b-mean)**2,0)/(values.length-1);
+ return {mean,ci:2.001*Math.sqrt(variance/values.length)};
+}
+function clusterPackets(items,width){
+ const gap=Math.min(.9,60/Math.max(80,width)),groups=[];
+ for(const item of [...items].sort((a,b)=>a.u-b.u)){
+  const prev=groups[groups.length-1];
+  if(prev&&item.u-prev.max<gap){
+   prev.items.push(item);prev.max=item.u;
+   prev.u=prev.items.reduce((s,x)=>s+x.u,0)/prev.items.length;
+  }else groups.push({items:[item],u:item.u,max:item.u});
+ }
+ return groups;
+}
+
+(function app(){
+"use strict";
+const $=id=>document.getElementById(id);
+const names=["Текст","Фото","Видео","Стили","Схема","Иконки"],colors=["#a9baff","#62dfbd","#ffbe78","#e89ce4","#75d6ee","#ddd078"];
+let seed=42,t=0,playing=false,manual=new Map(),manualHTTP1=new Map(),manualQUIC=new Map(),model,modelHTTP1,modelQUIC,chosen="",chartData=null,token=0,lessonGap=null,last=performance.now();
+const types=["http1","tcp","quic"],nodes=Object.fromEntries(types.map(type=>[type,new Map()]));
+const protocols={http1:{title:"HTTP/1.1 + TCP",sub:"Один ответ за раз · 1 соединение, без pipelining",badge:"TCP"},tcp:{title:"HTTP/2 + TCP",sub:"Потоки вперемешку, общий порядок байтов",badge:"TCP"},quic:{title:"HTTP/3 + QUIC",sub:"Порядок отдельно в каждом потоке",badge:"QUIC"}};
+const setupMeaning={
+ "SYN":"Браузер предлагает открыть TCP-соединение и сообщает свой начальный номер последовательности.",
+ "SYN + ACK":"Сервер подтверждает SYN браузера (ACK) и отправляет свой SYN с начальным номером последовательности.",
+ "ACK + ClientHello":"ACK подтверждает SYN сервера — третий шаг TCP; ClientHello начинает TLS.",
+ "Initial · ClientHello":"ClientHello начинает TLS прямо внутри QUIC Initial. Отдельно устанавливать TCP не нужно.",
+ "TLS: ответ сервера":"Сертификат и параметры TLS в пути; после получения браузер проверит сервер.",
+ "Finished + HTTP-запрос":"TLS завершается; защищённый HTTP-запрос уходит к серверу.",
+ "Первый байт ответа":"Сервер получил HTTP-запрос и возвращает защищённый ответ."
+};
+function renderPhases(type){
+ const m=transport(type),plan=m.setup,W=Math.max(220,$(type+"Phases").clientWidth),left=65,scale=v=>left+v/(endTime()+20)*(W-left-8),rtt=config().rtt,cold=plan.mode==='cold';
+ const rows=[{label:type==='quic'?'QUIC/TLS':'TCP',s:0,e:cold?rtt:0,col:'#86b5ff'},{label:'TLS',s:type==='quic'?0:rtt,e:cold?plan.requestAt:0,col:'#e89ce4'},{label:'Запрос',s:plan.requestAt,e:plan.requestArrival,col:'#ffcb72'},{label:'Данные',s:m.dataStart,e:m.duration,col:'#61dfbd'}];
+ let svg=`<svg viewBox="0 0 ${W} 82" role="img" aria-label="${protocols[type].title}: от рукопожатия до конца ответа; единая шкала времени">`;
+ rows.forEach((p,i)=>{const y=3+i*16;svg+=`<text x="0" y="${y+10}" fill="#b5c2d6" font-size="12">${p.label}</text>`;if(type==='quic'&&i===1){svg+=`<text x="${left}" y="${y+10}" fill="#b5c2d6" font-size="11">встроен в QUIC</text>`;return}if(p.e===0){svg+=`<text x="${left}" y="${y+10}" fill="#b5c2d6" font-size="11">уже готово</text>`;return}const x=scale(p.s),width=scale(p.e)-x,done=scale(Math.max(p.s,Math.min(t,p.e)))-x;svg+=`<g><title>${p.label}: ${p.s.toFixed(1)}–${p.e.toFixed(1)} мс</title><rect x="${x}" y="${y}" width="${width}" height="12" rx="2" fill="${p.col}" opacity=".18"/><rect x="${x}" y="${y}" width="${done}" height="12" rx="2" fill="${p.col}"/></g>`});
+ svg+=`<path d="M${scale(t)} 0V66" stroke="#ecf2fc"/><text x="${left}" y="79" fill="#b5c2d6" font-size="11">0</text><text x="${W-5}" y="79" text-anchor="end" fill="#b5c2d6" font-size="11">${Math.round(endTime())} мс</text></svg>`;
+ $(type+'Phases').innerHTML=svg;
+ const active=plan.events.find(e=>t>=e.s&&t<e.e),rel=release(type),buffered=m.arrival.filter((a,i)=>a<=t&&rel[i]>t).length;
+ $(type+'Stage').textContent=t<m.dataStart&&active?active.label+': '+(setupMeaning[active.label]||'Запрос летит к серверу; ответ ещё не начался.'):t>=m.duration?'Все объекты получены и выданы приложению.':buffered?`Данные пришли, но ${buffered} блоков ждут пропущенного предшественника ${type==='quic'?'в своём потоке.':'в своём TCP-соединении.'}`:'Передача ответов: пакеты летят, приложение получает доступные данные.';
+ const first=Math.min(...rel);
+ $(type+'Milestones').textContent=`Запрос: ${Math.round(plan.requestAt)} мс · первый блок: ${t>=first?Math.round(first)+' мс':'ожидается'} · всё: ${t>=m.duration?Math.round(m.duration)+' мс':'ожидается'}`;
+}
+
+const device=kind=>kind==="server"?'<svg viewBox="0 0 48 42" aria-hidden="true"><rect x="8" y="2" width="32" height="33" rx="4"/><path d="M8 13h32M8 24h32M17 40h14M24 35v5"/><circle cx="15" cy="8" r="1"/><circle cx="15" cy="19" r="1"/></svg>':'<svg viewBox="0 0 48 42" aria-hidden="true"><rect x="3" y="2" width="42" height="30" rx="4"/><path d="M3 10h42M24 32v8M15 40h18"/></svg>';
+function config(){return {n:+$("n").value,rtt:+$("rtt").value,mbps:+$("mbps").value,loss:+$("loss").value/100,h1Connections:+$("h1Connections").value,connectionMode:$("connectionMode").value,seed}}
+function simulateHTTP1(c,saved=new Map(),preset=false){return simulateProtocol(c,"http1",saved,preset)}
+function tell(s){$("notice").textContent=s}
+function sync(){$("play").textContent=playing?"Пауза":"▶ Запустить всё";last=performance.now()}
+function pause(){playing=false;sync()}
+function markDataLesson(id){for(const name of ["baseline","multiplex","hol","recovered"])$(name).classList.toggle("primary",name===id)}
+function transport(type){return type==="http1"?modelHTTP1:type==="quic"?modelQUIC:model}
+function release(type){return transport(type)[type==="quic"?"quic":"tcp"]}
+function completion(type){return transport(type)[type==="quic"?"doneQUIC":"doneTCP"]}
+function endTime(){return Math.max(model.duration,modelHTTP1.duration,modelQUIC.duration)}
+function blockMarkup(p){
+ const mark={delivered:"✓",buffered:"!",gap:"?",waiting:""}[p.state];
+ const status={delivered:"выдан приложению",buffered:"пришёл, ждёт предшествующий блок",gap:"ещё не пришёл; следующие блоки уже получены",waiting:"ещё не пришёл"}[p.state];
+ return `<span class="block ${p.state}" title="Блок ${p.id+1} · ${names[p.j]}: ${status}" aria-label="Блок ${p.id+1}, ${names[p.j]}: ${status}">${mark}${p.id+1}</span>`;
+}
+function art(j){
+ const c=colors[j];
+ return j===0?'<svg viewBox="0 0 240 38" aria-hidden="true"><path d="M10 8h170M10 19h220M10 30h200" stroke="'+c+'" stroke-width="4" stroke-linecap="round"/></svg>':j===2?'<svg viewBox="0 0 240 56" aria-hidden="true"><rect x="50" y="4" width="140" height="48" rx="6" fill="'+c+'" opacity=".2"/><path d="m110 15 22 13-22 13z" fill="'+c+'"/></svg>':'<svg viewBox="0 0 240 56" aria-hidden="true"><circle cx="178" cy="13" r="8" fill="'+c+'"/><path d="m15 54 52-45 56 45zm78 0 45-33 47 33zm58 0 38-38 40 38z" fill="'+c+'" opacity=".7"/></svg>';
+}
+function build(){
+ for(const type of types)nodes[type].clear();
+ $("panels").innerHTML=types.map(type=>`
+ <section class="panel protocolPanel" id="${type}Panel">
+ <div class="paneltitle"><div><h2>${protocols[type].title}</h2><p>${type==="http1"?modelHTTP1.connectionCount+" TCP-соединений · без pipelining":protocols[type].sub}</p></div><span class="protocol ${type}">${protocols[type].badge}</span></div>
+ <p class="panelSender" id="${type}Sender"></p>
+ <div class="nethead"><span>${device("server")}Сервер</span><span id="${type}Direction">Данные →</span><span>${device("browser")}Браузер</span></div>
+ <div class="lanes">${Array.from({length:type==="http1"?modelHTTP1.connectionCount:1},(_,conn)=>`<div class="connectionGroup"><div class="connectionName">${type==="http1"?"TCP C"+(conn+1):type==="tcp"?"Одно TCP-соединение":"Одно QUIC-соединение"}</div>${model.sizes.map((_,j)=>({j})).filter(({j})=>type!=="http1"||modelHTTP1.originals.find(p=>p.j===j).conn===conn).map(({j})=>`<div class="lane"><span class="lanename" style="color:${colors[j]}">${type==="http1"?"":"S"+(j+1)+" · "}${names[j]}</span><div class="track" id="${type}Track${j}"><span class="requestState" id="${type}Request${j}"></span></div></div>`).join("")}</div>`).join("")}</div>
+ <div class="metrics"><span>Пришло <b id="${type}Rx">0</b></span><span>Выдано <b id="${type}App">0</b></span><span class="amber">Буфер <b id="${type}Buffer">0</b></span><span>Потерь <b id="${type}Loss">0</b></span><span class="coverage">Объекты с данными <b id="${type}Coverage">0</b></span></div>
+ <div class="receiver"><div class="sub">${type==="quic"?"Очередь отдельно для каждого потока":type==="http1"?"Очередь отдельно для каждого TCP-соединения":"Общая очередь одного TCP-соединения"}</div><div id="${type}Queue"></div><div class="queueLegend">✓ выдано · ! пришёл, но ждёт · ? пропуск перед пришедшими · число без знака: ещё не пришёл</div></div>
+ <div class="page"><div class="browserbar">● ● ● &nbsp; demo.local/page</div><div class="objects">${model.sizes.map((n,j)=>`
+ <div class="object"><div id="${type}Art${j}" class="art">${art(j)}</div><div class="objlabel"><span>${names[j]}</span><span id="${type}Obj${j}"></span></div><div class="progress"><i id="${type}Bar${j}" style="background:${colors[j]}"></i></div></div>`).join("")}</div></div>
+ <div class="timing"><div class="sub"><span>Приход → выдача приложению · мс</span><span>${type==="http1"?"Серый пунктир — запрос":"Жёлтый отрезок — буфер"}</span></div><div class="timeline" id="${type}Time"></div></div>
+ <details class="log"><summary>События ${protocols[type].title}</summary><ol class="events" id="${type}Events"></ol></details>
+ </section>`).join("");
+ for(const type of types)buildTimeline(type);
+}
+const timelineWidths={};
+const tx=(type,v)=>58+v/(endTime()+20)*(timelineWidths[type]-82);
+function buildTimeline(type){
+ const m=transport(type),H=m.sizes.length*24+34,W=Math.max(180,$(type+"Time").clientWidth||300),ticks=W<350?2:4;
+ timelineWidths[type]=W;
+ let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${protocols[type].title}: время в миллисекундах, жёлтые линии — ожидание в буфере"><rect x="58" y="6" width="${W-82}" height="${H-31}" fill="none" stroke="#35445b"/>`;
+ for(let k=0;k<=ticks;k++){
+  const v=(endTime()+20)*k/ticks;
+  s+=`<path d="M${tx(type,v)} 6V${H-25}" stroke="#29374d"/><text x="${tx(type,v)}" y="${H-8}" text-anchor="middle" fill="#b5c2d6" font-size="12">${Math.round(v)}</text>`;
+ }
+ m.sizes.forEach((_,j)=>s+=`<text x="0" y="${23+j*24}" fill="#b5c2d6" font-size="12">${names[j]}</text>`);
+ for(const r of m.requests.filter(r=>r.sent!==null))s+=`<line data-request-start="${r.sent}" data-request-end="${r.available}" x1="${tx(type,r.sent)}" x2="${tx(type,r.sent)}" y1="${19+r.j*24}" y2="${19+r.j*24}" stroke="#b5c2d6" stroke-width="3" stroke-dasharray="3 3" opacity="0"><title>Запрос «${names[r.j]}»: ${r.sent.toFixed(1)}–${r.available.toFixed(1)} мс</title></line>`;
+ for(const p of m.originals){
+  const start=m.arrival[p.id],end=release(type)[p.id],y=19+p.j*24;
+  if(end>start+1e-7)s+=`<line data-start="${start}" data-end="${end}" x1="${tx(type,start)}" x2="${tx(type,start)}" y1="${y}" y2="${y}" stroke="#ffcb72" stroke-width="4" opacity="0"/>`;
+  s+=`<circle data-release="${end}" cx="${tx(type,end)}" cy="${y}" r="3" fill="${colors[p.j]}" opacity="0"/>`;
+ }
+ s+=`<path id="${type}Cursor" d="M0 6V${H-25}" stroke="#eef4ff"/></svg>`;
+ $(type+"Time").innerHTML=s;
+}
+function reset(){
+ markDataLesson("");
+ pause();t=0;manual.clear();manualHTTP1.clear();manualQUIC.clear();chosen="";lessonGap=$("scenario").value==="one"?1:null;
+ model=simulateProtocol(config(),"tcp",manual,$("scenario").value==="one");
+ modelQUIC=simulateProtocol(config(),"quic",manualQUIC,$("scenario").value==="one");
+ modelHTTP1=simulateHTTP1(config(),manualHTTP1,$("scenario").value==="one");
+ for(const id of ["rtt","mbps","loss","n"])$(id+"V").textContent=$(id).value+({rtt:" мс",mbps:" Мбит/с",loss:"%",n:""}[id]);
+ $("seedV").textContent=seed;build();render();
+ tell("Готово. Запустите демонстрацию или перейдите к следующему событию.");
+}
+function rewind(){
+ pause();t=0;chosen="";render();
+ tell(`Повтор тех же трасс: seed ${seed}, ручных потерь ${manual.size+manualHTTP1.size+manualQUIC.size}. Они произойдут снова в сохранённые моменты.`);
+}
+function network(type){
+ const m=transport(type),map=nodes[type],used=new Set();
+ for(let j=0;j<m.sizes.length;j++){
+  const track=$(type+"Track"+j);
+  const request=m.requests.find(r=>r.j===j),queued=!request.initial&&t<request.sent,connecting=request.initial&&t<request.sent,travelling=t>=request.sent&&t<request.available;
+  track.classList.toggle('requestQueued',queued);track.classList.toggle('requestInFlight',connecting||travelling);
+  $(type+'Request'+j).textContent=queued?`Запрос ждёт ответа «${names[j-m.connectionCount]}»`:connecting?'Установка соединения':travelling?'Запрос → серверу':'';
+  const items=m.flights.filter(f=>f.j===j).map(f=>({f,...flightState(f,t)})).filter(x=>x.phase==="flight"||x.phase==="lost");
+  for(const group of clusterPackets(items,track.clientWidth||260)){
+   const key=j+"/"+group.items.map(x=>x.f.key).join(","),live=group.items.filter(x=>x.phase==="flight");
+   used.add(key);let b=map.get(key);
+   if(!b){b=document.createElement("button");b.className="packet";b.tabIndex=-1;track.appendChild(b);map.set(key,b)}
+   b.textContent=group.items.length>1?group.items.length+" пак.":(group.items[0].phase==="lost"?"× ":group.items[0].f.a?"↻ ":"")+(group.items[0].f.id+1);
+   b.style.left=`calc(${Math.max(0,Math.min(1,group.u))*100}% - ${Math.max(0,Math.min(1,group.u))*54}px)`;
+   b.style.background=live.length?colors[j]:"#ff777d";
+   b.title=group.items.map(x=>`Пакет ${x.f.id+1}, попытка ${x.f.a+1}${x.phase==="lost"?" — потерян":""}`).join("; ");
+   b.disabled=!live.length;
+   b.onclick=()=>{
+    pause();
+    $("lossTarget").value=type;
+    if(live.length===1){drop(live[0].f.key);return}
+    chosen=live[0].f.key;updatePicker();$("experimentSettings").open=true;$("packetSelect").focus();
+    tell("Пакеты наложились. Выберите нужный пакет в списке и нажмите «Потерять».");
+   };
+  }
+  const serializing=m.flights.some(f=>f.j===j&&t>=f.s&&t<f.end);
+  track.classList.toggle("serializing",serializing);
+ }
+ for(const[key,b]of map)if(!used.has(key)){b.remove();map.delete(key)}
+}
+function updatePicker(){
+ const target=$("lossTarget").value,m=transport(target);
+ const available=selectableFlights(m,t),sel=$("packetSelect"),signature=target+":"+available.map(f=>f.key).join("|");
+ if(sel.dataset.signature!==signature){
+  sel.innerHTML=available.length?available.map(f=>`<option value="${f.key}">№${f.id+1} · ${names[f.j]} · попытка ${f.a+1}</option>`).join(""):'<option value="">Сейчас нет пакетов в полёте</option>';
+  sel.dataset.signature=signature;
+ }
+ if(!available.some(f=>f.key===chosen))chosen=available[0]?.key||"";
+ sel.value=chosen;$("drop").disabled=!chosen;sel.disabled=!available.length;
+ $("pickCount").textContent=available.length+" доступно";
+ $("drop").textContent="Потерять в "+protocols[target].title;
+}
+function drop(key){
+ const type=$("lossTarget").value,m=transport(type),saved=type==='http1'?manualHTTP1:type==='quic'?manualQUIC:manual;
+ const f=selectableFlights(m,t).find(f=>f.key===key);
+ if(!f){tell("Пакет уже недоступен. Выберите другой.");return}
+ pause();const nextManual=new Map([...saved].filter(([,at])=>at<=t)),removed=saved.size-nextManual.size;nextManual.set(key,t);
+ let updated;try{updated=simulateProtocol(config(),type,nextManual,$("scenario").value==="one")}catch(e){tell("Не удалось изменить опыт: "+e.message);return}
+ if(type==='http1'){manualHTTP1=nextManual;modelHTTP1=updated}else if(type==='quic'){manualQUIC=nextManual;modelQUIC=updated}else{manual=nextManual;model=updated}
+ lessonGap=null;build();render();tell(`Блок №${f.id+1}: потеря в ${t.toFixed(1)} мс в ${protocols[type].title}.${removed?' Будущие ручные потери отменены в этой трассе.':''}`);
+}
+
+function eventLog(type){
+ const m=transport(type),e=m.setup.events.filter(x=>x.s<=t).map(x=>({at:x.s,text:x.label}));
+ for(const r of m.requests){
+  if(r.sent!==null&&r.sent<=t)e.push({at:r.sent,text:`C${r.conn+1}: запрос «${names[r.j]}» ${r.initial?"отправлен после установления соединения":"отправлен после предыдущего ответа"}`});
+  if(r.available<=t)e.push({at:r.available,text:`C${r.conn+1}: запрос «${names[r.j]}» доступен серверу`});
+ }
+ for(const f of m.flights){
+  if(f.s<=t)e.push({at:f.s,text:`Отправка №${f.id+1} · ${names[f.j]}${f.a?" · повтор "+f.a:""}`});
+  if(f.lost){
+   if(f.lossAt<=t)e.push({at:f.lossAt,text:`× Пакет №${f.id+1} потерян в сети`});
+   const detected=f.end+config().rtt*1.5;
+   if(detected<=t)e.push({at:detected,text:`Отправитель обнаружил потерю №${f.id+1}; повтор в очереди`});
+  }else if(f.arrival<=t)e.push({at:f.arrival,text:`Приход №${f.id+1} к получателю`});
+ }
+ e.sort((a,b)=>b.at-a.at);
+ $(type+"Events").innerHTML=e.slice(0,6).map(v=>`<li><time>${v.at.toFixed(1)} мс</time> ${v.text}</li>`).join("")||"<li>Событий пока нет.</li>";
+}
+function render(){
+ const photoBlocks=model.originals.filter(p=>p.j===1).slice(0,2).map(p=>"№"+(p.id+1)).join(", ");
+ $("streamMapping").textContent=`Пакеты: сервер → браузер. Фото: поток S2, блоки ${photoBlocks}. Номера обозначают те же данные во всех трёх колонках.`;
+ $("clock").textContent=t.toFixed(1)+" мс";
+ $("scenario").querySelector('[value="random"]').textContent=config().loss?`Случайные потери ${Math.round(config().loss*100)}%`:"Без потерь";
+ $("modelScope").textContent=`RTT ${config().rtt} мс · ${config().mbps} Мбит/с · HTTPS/TLS 1.3. Отсчёт от ${config().connectionMode==="cold"?"SYN / QUIC Initial":"запроса в готовом соединении"}. Бледное — впереди, яркое — уже прошло.`;
+ $("clearLoss").disabled=!(manual.size+manualHTTP1.size+manualQUIC.size);
+ $("recovered").disabled=lessonGap===null;$("lossMoment").disabled=lessonGap===null;
+ for(const type of types){
+  const m=transport(type);network(type);renderPhases(type);const rel=release(type);
+  const sender=senderState(m,t);
+  $(type+"Sender").textContent=type==="http1"?`${m.connectionCount} независимых TCP-соединений делят один канал. В каждом сохраняется свой порядок байтов.`:type==="tcp"?"Несколько HTTP-потоков S1…Sn делят один общий порядок байтов TCP.":"Потоки S1…Sn имеют отдельный порядок данных; канал и контроль перегрузки остаются общими.";
+  eventLog(type);
+  const arrived=m.arrival.filter(v=>v<=t).length,delivered=rel.filter(v=>v<=t).length;
+  const touched=new Set(m.originals.filter(p=>rel[p.id]<=t).map(p=>p.j)).size,complete=completion(type).filter(v=>v<=t).length;
+  const sent=m.requests.filter(r=>r.sent<=t).length,queued=m.requests.filter(r=>!r.initial&&r.sent>t).length,travelling=m.requests.filter(r=>r.sent<=t&&r.available>t).length;
+  $(type+'Parallel').innerHTML=`<strong>${m.connectionCount} ${type==='quic'?'QUIC':'TCP'}</strong> · запросов отправлено ${sent}/${m.sizes.length}<br><span class="${queued?'pending':''}">Ждут предыдущего ответа: ${queued}</span> · в пути: ${travelling}<br>Доступны данные <strong>${touched}/${m.sizes.length}</strong> объектов · целиком ${complete}/${m.sizes.length}`;
+  $(type+'Coverage').textContent=`${touched}/${m.sizes.length}`;
+  $(type+"Rx").textContent=arrived;$(type+"App").textContent=delivered;
+  $(type+"Buffer").textContent=arrived-delivered;
+  $(type+"Loss").textContent=m.flights.filter(f=>f.lossAt<=t).length;
+  const blocks=receiveState(m,type==="quic"?"quic":"tcp",t),groups=type==="quic"?m.sizes.map((_,j)=>blocks.filter(p=>p.j===j)):type==="http1"?m.orders.map((_,conn)=>blocks.filter(p=>p.conn===conn)):[blocks];
+  $(type+"Queue").innerHTML=groups.map((group,j)=>`<div class="queue">${type!=="tcp"?`<span class="queueName">${type==="http1"?"C"+(j+1):"S"+(j+1)}</span>`:""}<div class="blocks">${group.map(blockMarkup).join("")}</div></div>`).join("");
+  const doneTimes=completion(type);
+  m.sizes.forEach((n,j)=>{
+   const count=m.originals.filter(p=>p.j===j&&rel[p.id]<=t).length;
+   const done=doneTimes[j];
+   $(type+"Obj"+j).textContent=count===n?"✓ "+Math.round(done)+" мс":count+"/"+n;
+   $(type+"Art"+j).style.opacity=count===n?"1":String(.12+.25*count/n);
+   $(type+"Bar"+j).style.width=count/n*100+"%";
+  });
+  const time=$(type+"Time");
+  time.querySelectorAll("[data-start]").forEach(el=>{
+   const s=+el.dataset.start,e=+el.dataset.end;
+   el.setAttribute("opacity",t>=s?".85":"0");
+   el.setAttribute("x2",tx(type,Math.max(s,Math.min(t,e))));
+  });
+  time.querySelectorAll("[data-release]").forEach(el=>el.setAttribute("opacity",+el.dataset.release<=t?"1":"0"));
+  time.querySelectorAll("[data-request-start]").forEach(el=>{
+   const start=+el.dataset.requestStart,end=+el.dataset.requestEnd;
+   el.setAttribute("opacity",t>=start?".9":"0");el.setAttribute("x2",tx(type,Math.max(start,Math.min(t,end))));
+  });
+  $(type+"Cursor").setAttribute("transform",`translate(${tx(type,t)} 0)`);
+ }
+ const active=modelHTTP1.doneTCP.findIndex(v=>v>t),activeRequests=modelHTTP1.requests.filter(r=>r.available<=t&&modelHTTP1.doneTCP[r.j]>t),travelling=modelHTTP1.requests.filter(r=>r.sent!==null&&r.sent<=t&&r.available>t);
+ $("http1Direction").textContent=active<0?"Готово":travelling.length&&!activeRequests.length?"← Запрос":"Данные →";
+ const h1lost=[...new Set(modelHTTP1.flights.filter(f=>f.lossAt<=t&&modelHTTP1.arrival[f.id]>t).map(f=>f.id+1))];
+ $("http1Insight").textContent=t<modelHTTP1.dataStart?(t<modelHTTP1.setup.requestAt?`HTTP/1.1: установка ${modelHTTP1.connectionCount} TCP/TLS-соединений параллельно.`:"HTTP/1.1: первые HTTP-запросы летят к серверу; ответы ещё не начались."):active<0?"HTTP/1.1: все ответы получены. Это время выбранного опыта, а не универсальная скорость протокола.":`HTTP/1.1: ${activeRequests.length?"ответы в работе — "+activeRequests.map(r=>"C"+(r.conn+1)+" «"+names[r.j]+"»").join(", "):"ожидаются следующие запросы"}.${travelling.length?" Запрос летит к серверу: "+travelling.map(r=>"«"+names[r.j]+"»").join(", ")+".":""}${h1lost.length?" Потеря "+blockList(h1lost)+" задерживает данные только соответствующего TCP-соединения; другие соединения могут продолжать работу.":""}`;
+ updatePicker();
+ const descriptions=types.map(type=>{const m=transport(type),rel=release(type),held=m.originals.filter(p=>m.arrival[p.id]<=t&&rel[p.id]>t).map(p=>p.id+1),lost=[...new Set(m.flights.filter(f=>f.lossAt<=t&&m.arrival[f.id]>t).map(f=>f.id+1))];return `${protocols[type].title}: ${lost.length?'потерян '+blockList(lost)+'; ':''}${held.length?'в буфере '+blockList(held):t<m.dataStart?'соединение / запрос ещё в пути':'буфер пуст'}`});
+ $("insight").textContent=descriptions.join(' · ');
+ $("recovery").textContent=config().connectionMode==='cold'?"Ранний старт QUIC даёт фору по времени. Граница буфера показывает отдельно эффект порядка: TCP — на соединение, QUIC — на поток. Общее окно может замедлить будущую отправку других потоков.":"Соединения уже готовы: сравнивайте порядок ответов и границы буфера без преимущества холодного старта.";
+
+ $("next").disabled=t>=endTime();
+}
+function changeConfig(){
+ token++;chartData=null;
+ $("chart").innerHTML="<p>Параметры изменены. Постройте график заново.</p>";
+ $("chartConditions").textContent="Параметры изменены. Новый график использует текущие RTT, канал и число объектов; плановая и ручные потери исключаются.";
+ $("table").innerHTML="";$("sweep").disabled=false;$("sweepState").textContent="";reset();
+}
+for(const id of ["rtt","mbps","loss","n"])$(id).oninput=changeConfig;
+$("h1Connections").onchange=changeConfig;
+$("connectionMode").onchange=changeConfig;
+$("scenario").onchange=reset;
+$("restart").onclick=rewind;
+$("clearLoss").onclick=()=>{reset();tell("Ручные потери сброшены. Плановый сценарий и seed сохранены.")};
+$("newSeed").onclick=()=>{seed++;reset()};
+$("play").onclick=()=>{if(t>=endTime())rewind();playing=!playing;sync()};
+$("next").onclick=()=>{pause();const future=[...model.moments,...modelHTTP1.moments,...modelQUIC.moments].filter(v=>v>t+1e-7);t=future.length?Math.min(...future):endTime();render()};
+$("baseline").onclick=()=>{$("scenario").value="random";$("loss").value="0";changeConfig();markDataLesson("baseline");tell("Без потерь. Запустите всё: сначала рукопожатие и запрос, затем ответы на тех же часах.")};
+$("multiplex").onclick=()=>{$("n").value="6";$("h1Connections").value="2";$("scenario").value="random";$("loss").value="0";changeConfig();markDataLesson("multiplex");tell("Шесть объектов и два TCP у HTTP/1.1. Запустите: у HTTP/2 все ответы делят одно соединение; у HTTP/1.1 последующие запросы ждут своего предыдущего ответа.")};
+$("whyHttp2").onclick=()=>{
+ $("n").value="4";$("h1Connections").value="2";$("scenario").value="random";$("loss").value="0";changeConfig();
+ t=Math.max(...model.originals.filter(p=>p.k===0).map(p=>model.arrival[p.id]));render();
+ tell(`Момент ${t.toFixed(1)} мс на общей шкале. HTTP/1.1: данные двух объектов получены через два TCP, ещё два запроса ждут полного ответа. HTTP/2: данные всех четырёх объектов уже получены через один TCP. Фиолетовые дорожки ниже — запросы, которые HTTP/1.1 ещё не отправил. «Повторить» покажет этот же запуск с рукопожатия.`);
+};
+$("hol").onclick=()=>{$("scenario").value="one";$("loss").value="0";changeConfig();markDataLesson("hol");tell("Один запуск с потерей блока №2 в каждом протоколе, в свои моменты отправки. Запустите с начала или перейдите к блокировке.")};
+$("firstData").onclick=()=>{pause();t=Math.min(...types.flatMap(type=>release(type)));render();tell("Первый блок выдан приложению. Время продолжает отсчитываться от начала этого же запуска.")};
+$("lossMoment").onclick=()=>{pause();if(lessonGap===null){tell("Сначала выберите сценарий потери блока №2.");return}t=holMoment(model)??model.arrival[lessonGap];render();tell("Тот же запуск: сравните буферы TCP и QUIC. Из-за разного старта одинаковые блоки теряются и восстанавливаются в разные абсолютные моменты.")};
+$("recovered").onclick=()=>{pause();if(lessonGap===null)return;t=Math.max(...types.map(type=>transport(type).arrival[lessonGap]));render();markDataLesson("recovered");tell("Повтор блока №2 уже пришёл во всех трёх протоколах. Общие часы сохранены; новые соединения не создавались.")};
+
+$("lossTarget").onfocus=pause;
+$("lossTarget").onchange=()=>{pause();chosen="";updatePicker()};
+$("packetSelect").onfocus=pause;
+$("packetSelect").onpointerdown=pause;
+$("packetSelect").onchange=e=>{chosen=e.target.value};
+$("drop").onclick=()=>drop(chosen);
+document.addEventListener("visibilitychange",()=>{last=performance.now()});
+function frame(now){
+ const elapsed=now-last;last=now;
+ if(playing&&!document.hidden){
+  t=advance(t,elapsed,+$("speed").value,true,true,endTime());render();
+  if(t>=endTime()){playing=false;sync();tell("Все три прогона завершены. Можно повторить их или построить график.")}
+ }
+ requestAnimationFrame(frame);
+}
+function drawChart(){
+ if(!chartData)return;
+ const metric=$("metric").value,keys=metric==="gain"?["gain"]:types;
+ const stat=(d,key)=>metric==="page"?(key==="http1"?d.page1:key==="tcp"?d.pageTCP:key==="quic"?d.pageQUIC:d.pageGain):d[key];
+ const all=chartData.flatMap(d=>keys.map(key=>stat(d,key)));
+ const lo=Math.min(0,...all.map(s=>s.mean-s.ci)),hi=Math.max(1,...all.map(s=>s.mean+s.ci)),pad=(hi-lo)*.12;
+ const min=lo<0?lo-pad:0,max=hi+pad,x=p=>72+p/.2*690,y=v=>230-(v-min)/(max-min)*210;
+ let svg='<svg viewBox="0 0 800 285" role="img" aria-label="Время загрузки от вероятности потерь; средние значения и 95% интервалы"><rect x="72" y="20" width="690" height="210" fill="none" stroke="#3a4a63"/>';
+ for(let k=0;k<=4;k++){
+  const v=min+(max-min)*k/4;
+  svg+=`<path d="M72 ${y(v)}H762" stroke="#29374d"/><text x="63" y="${y(v)+4}" text-anchor="end" fill="#b5c2d6" font-size="11">${Math.round(v)}</text>`;
+ }
+ for(const p of [0,.05,.1,.15,.2])svg+=`<text x="${x(p)}" y="250" text-anchor="middle" fill="#b5c2d6" font-size="11">${Math.round(p*100)}%</text>`;
+ svg+='<text x="420" y="277" text-anchor="middle" fill="#b5c2d6" font-size="12">Вероятность потери каждой попытки</text><text transform="translate(18 130) rotate(-90)" text-anchor="middle" fill="#b5c2d6" font-size="12">Время, мс</text>';
+ for(const key of keys){
+  const col=key==="http1"?"#ffbe78":key==="tcp"?"#86b5ff":"#61dfbd";
+  svg+=`<path data-series="${key}" d="${chartData.map((d,i)=>(i?"L":"M")+x(d.p)+" "+y(stat(d,key).mean)).join(" ")}" fill="none" stroke="${col}" stroke-width="2.5" ${key==="quic"?'stroke-dasharray="6 5"':key==="http1"?'stroke-dasharray="2 4"':""}/>`;
+  for(const d of chartData){
+   const s=stat(d,key),xx=x(d.p),yy=y(s.mean),a=y(s.mean+s.ci),b=y(s.mean-s.ci);
+   const marker=key==="http1"?`<path d="M${xx} ${yy-4}l4 7h-8z" fill="${col}"/>`:key==="tcp"?`<circle cx="${xx}" cy="${yy}" r="4" stroke="${col}" fill="#141e30"/>`:`<rect x="${xx-2.5}" y="${yy-2.5}" width="5" height="5" fill="${col}"/>`;
+   svg+=`<g><title>${key==="gain"?"Выигрыш H3 перед H2":protocols[key].title}, ${Math.round(d.p*100)}%: ${s.mean.toFixed(1)} ± ${s.ci.toFixed(1)} мс</title><path d="M${xx} ${a}V${b}M${xx-4} ${a}h8M${xx-4} ${b}h8" stroke="${col}" opacity=".7"/>${marker}</g>`;
+  }
+ }
+ svg+="</svg>";
+ $("chart").innerHTML='<div class="legend">'+(metric==="gain"?"HTTP/3: насколько раньше готов средний объект по сравнению с HTTP/2":"HTTP/1.1: оранжевая, точки, треугольники · HTTP/2: синяя, сплошная, круги · HTTP/3: зелёная, пунктир, квадраты")+"</div>"+svg;
+ const fmt=s=>s.mean.toFixed(1)+" ± "+s.ci.toFixed(1);
+ $("table").innerHTML='<table><caption>Среднее ± 95% ДИ, мс; выигрыш = HTTP/2 минус HTTP/3</caption><thead><tr><th>Потери</th><th>HTTP/1.1</th><th>HTTP/2</th><th>HTTP/3</th><th>Выигрыш H3 перед H2</th></tr></thead><tbody>'+chartData.map(d=>`<tr><td>${Math.round(d.p*100)}%</td><td>${fmt(metric==="page"?d.page1:d.http1)}</td><td>${fmt(metric==="page"?d.pageTCP:d.tcp)}</td><td>${fmt(metric==="page"?d.pageQUIC:d.quic)}</td><td>${fmt(metric==="page"?d.pageGain:d.gain)}</td></tr>`).join("")+"</tbody></table>";
+ $("chartNote").textContent="Времена включают выбранный режим установления соединения и доставку первого запроса. В новом соединении QUIC начинает ответы на 1 RTT раньше; на готовом соединении эта фора исчезает. Общий канал и окна остаются ограничениями. Выигрыш H3 = время H2 минус H3 для того же seed; отрезки — 95% ДИ среднего, разность рассчитана по парным наблюдениям.";
+}
+$("metric").onchange=drawChart;
+$("sweep").onclick=async()=>{
+ pause();const mine=++token,c=config(),data=[];$("sweep").disabled=true;
+ $("chartConditions").textContent=`RTT ${c.rtt} мс · общий канал ${c.mbps} Мбит/с · объектов ${c.n}. ${c.connectionMode==='cold'?'Новое соединение, HTTPS/TLS 1.3':'Повторный запрос в готовом соединении'}. HTTP/1.1: до ${c.h1Connections} TCP-соединений без pipelining; их пропускная способность не складывается. 60 прогонов трёх протоколов на точку, seeds 1000–1059. Плановая и ручные потери исключены; выбранный выше seed не используется.`;
+ try{
+  for(const p of [0,.01,.02,.05,.1,.15,.2]){
+   if(mine!==token)return;
+   const h1=[],a=[],b=[],page1=[],pageTCP=[],pageQUIC=[],gain=[],pageGain=[];
+   for(let i=0;i<60;i++){
+    const sample={...c,loss:p,seed:1000+i},m=simulateProtocol(sample,'tcp'),q=simulateProtocol(sample,'quic'),s=simulateHTTP1(sample);
+    const ta=m.doneTCP.reduce((x,y)=>x+y)/c.n,tb=q.doneQUIC.reduce((x,y)=>x+y)/c.n;
+    a.push(ta);b.push(tb);pageTCP.push(m.duration);pageQUIC.push(q.duration);gain.push(ta-tb);pageGain.push(m.duration-q.duration);
+    h1.push(s.doneTCP.reduce((x,y)=>x+y)/c.n);page1.push(s.duration);
+   }
+   data.push({p,http1:pairedStats(h1),tcp:pairedStats(a),quic:pairedStats(b),page1:pairedStats(page1),pageTCP:pairedStats(pageTCP),pageQUIC:pairedStats(pageQUIC),gain:pairedStats(gain),pageGain:pairedStats(pageGain)});
+   $("sweepState").textContent=data.length+"/7 точек";
+   await new Promise(r=>setTimeout(r,0));
+  }
+  if(mine===token){chartData=data;drawChart();$("sweepState").textContent="420 наборов по 3 протокола · готово"}
+ }catch(e){tell("Не удалось рассчитать график: "+e.message)}
+ finally{if(mine===token)$("sweep").disabled=false}
+};
+function selfTest(){
+ const c={n:4,rtt:180,mbps:1,loss:0,seed:42};let count=0;
+ const ok=x=>{count++;if(!x)throw Error("Проверка "+count)};
+ for(let n=2;n<=6;n++)for(const rtt of [40,600])for(const mbps of [.1,10])for(const loss of [0,.2]){
+  const m=simulate({...c,n,rtt,mbps,loss});
+  ok(m.arrival.every(Number.isFinite));
+  ok(m.quic.every((x,i)=>x>=m.arrival[i]&&x<=m.tcp[i]));
+  ok(m.flights.every((x,i)=>!i||x.s>=m.flights[i-1].end-1e-8));
+  ok(Math.max(...m.doneTCP)===Math.max(...m.doneQUIC));
+  if(!loss)ok(m.tcp.every((v,i)=>v===m.quic[i]));
+  const h1=simulate({...c,n,rtt,mbps,loss},new Map(),false,true);
+  ok(h1.arrival.every(Number.isFinite));
+  ok(h1.requests.slice(1).every(r=>r.sent===h1.doneTCP[r.j-1]&&r.available===r.sent+rtt/2));
+  ok(h1.flights.every(f=>f.s>=h1.requests[f.j].available-1e-7));
+  for(const count of [2]){
+   const pool=simulate({...c,n,rtt,mbps,loss},new Map(),false,count);
+   ok(pool.connectionCount===Math.min(n,count)&&pool.arrival.every(Number.isFinite));
+   ok(pool.flights.every((f,i)=>!i||f.s>=pool.flights[i-1].end-1e-7));
+   ok(pool.requests.filter(r=>r.sent!==null).every(r=>r.sent===pool.doneTCP[r.j-pool.connectionCount]));
+   ok(pool.orders.every(order=>{let prefix=0;return order.every(id=>{prefix=Math.max(prefix,pool.arrival[id]);return pool.tcp[id]===prefix})}));
+  }
+ }
+ const a=simulate(c),f=a.flights[2],at=f.end+60,b=simulate(c,new Map([[f.key,at]]));
+ for(let time=0;time<at;time+=3){
+  const past=(m,type)=>JSON.stringify(m[type].map((v,i)=>v<=time?i:null).filter(x=>x!==null));
+  ok(past(a,"tcp")===past(b,"tcp"));ok(past(a,"quic")===past(b,"quic"));
+ }
+ ok(b.flights.some(f=>f.key==="2:1"&&!f.lost));
+ ok(flightState(b.flights.find(x=>x.key===f.key),at).phase==="lost");
+ ok(bufferedSegments(b,"tcp",at+60).every(s=>s.end<=at+60));
+ return count;
+}
+$("test").onclick=()=>{
+ try{$("testResult").textContent=selfTest()+" проверки пройдены. Браузерная вёрстка этими тестами не проверяется."}
+ catch(e){$("testResult").textContent=e.message}
+};
+reset();requestAnimationFrame(frame);
+let lastPanelWidth=$("panels").clientWidth;
+new ResizeObserver(()=>{
+ const width=$("panels").clientWidth;
+ if(width===lastPanelWidth)return;
+ lastPanelWidth=width;for(const type of types)buildTimeline(type);render();
+}).observe($("panels"));
+new ResizeObserver(()=>{for(const type of types)renderPhases(type)}).observe($("overview"));
+})();
+</script>
+</html>
